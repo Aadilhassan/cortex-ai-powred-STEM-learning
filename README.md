@@ -8,6 +8,10 @@ Upload a PDF or paste your syllabus. Cortex chunks it, embeds it, and lets you h
 
 ![Course View](ScreenShot2.png)
 
+![AI Tutor Chat](ScreenShot3.png)
+
+![Exam Prep](ScreenShot4.png)
+
 ---
 
 ## Why
