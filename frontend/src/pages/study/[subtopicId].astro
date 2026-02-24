@@ -1,0 +1,8 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import StudyView from '../../components/StudyView.tsx';
+const { subtopicId } = Astro.params;
+---
+<Layout title="Study - Study Pal">
+  <StudyView subtopicId={subtopicId!} client:load />
+</Layout>
