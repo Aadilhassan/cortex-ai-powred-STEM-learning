@@ -17,6 +17,9 @@ interface Section {
   course_id: string;
   title: string;
   summary: string;
+  learning_objectives: string;
+  key_concepts: string;
+  prerequisites: string;
   order_index: number;
   subtopics: Subtopic[];
 }
@@ -34,21 +37,6 @@ interface ProgressEntry {
   subtopic_id: string;
   status: string;
 }
-
-/* ── Palette ─────────────────────────────────────────────────────────────── */
-
-const C = {
-  bg: '#0f0f13',
-  surface: '#1a1a24',
-  surfaceHover: '#252536',
-  border: '#2a2a3d',
-  text: '#e0e0e0',
-  textSecondary: '#8888a0',
-  accent: '#7c8aff',
-  accentHover: '#9ba6ff',
-  success: '#4ade80',
-  warning: '#fbbf24',
-} as const;
 
 /* ── Component ───────────────────────────────────────────────────────────── */
 
@@ -128,25 +116,23 @@ export default function CourseView({ courseId }: { courseId: string }) {
 
   function getStatusBadge(subtopicId: string) {
     const status = progressMap[subtopicId] || 'not_started';
-    const styles: Record<string, { bg: string; text: string; label: string }> = {
-      not_started: { bg: C.border, text: C.textSecondary, label: 'Not started' },
-      in_progress: { bg: C.warning + '22', text: C.warning, label: 'In progress' },
-      completed: { bg: C.success + '22', text: C.success, label: 'Completed' },
+    const config: Record<string, { dot: string; text: string; textColor: string; label: string }> = {
+      not_started: { dot: 'bg-zinc-600', text: 'text-zinc-600', textColor: 'text-zinc-600', label: 'Not started' },
+      in_progress: { dot: 'bg-amber-400', text: 'text-amber-400', textColor: 'text-amber-400', label: 'In progress' },
+      completed: { dot: 'bg-green-400', text: 'text-green-400', textColor: 'text-green-400', label: 'Done' },
     };
-    const s = styles[status] || styles.not_started;
+    const s = config[status] || config.not_started;
     return (
-      <span
-        style={{
-          background: s.bg,
-          color: s.text,
-          padding: '0.2rem 0.6rem',
-          borderRadius: '9999px',
-          fontSize: '0.75rem',
-          fontWeight: 500,
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {s.label}
+      <span className="flex items-center gap-2">
+        <span className={`w-2 h-2 rounded-full ${s.dot}`} />
+        <span className={`text-xs ${s.textColor}`}>
+          {status === 'completed' && (
+            <svg className="inline w-3 h-3 mr-0.5 -mt-px" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          )}
+          {s.label}
+        </span>
       </span>
     );
   }
@@ -154,16 +140,16 @@ export default function CourseView({ courseId }: { courseId: string }) {
   /* ── Render ──────────────────────────────────────────────────────────── */
 
   if (loading) {
-    return <p style={{ color: C.textSecondary }}>Loading course...</p>;
+    return <p className="text-zinc-500 text-center py-20">Loading course...</p>;
   }
 
   if (error || !course) {
     return (
       <div>
-        <a href="/" style={{ color: C.accent, fontSize: '0.9rem' }}>
+        <a href="/" className="text-indigo-400 text-sm">
           &larr; Back to Dashboard
         </a>
-        <p style={{ color: '#f87171', marginTop: '1rem' }}>{error || 'Course not found.'}</p>
+        <p className="text-red-400 mt-4">{error || 'Course not found.'}</p>
       </div>
     );
   }
@@ -173,69 +159,41 @@ export default function CourseView({ courseId }: { courseId: string }) {
       {/* Back link */}
       <a
         href="/"
-        style={{
-          color: C.accent,
-          fontSize: '0.9rem',
-          display: 'inline-block',
-          marginBottom: '1.5rem',
-        }}
+        className="text-indigo-400 text-sm inline-block mb-6"
       >
         &larr; Back to Dashboard
       </a>
 
       {/* Course header */}
-      <div style={{ marginBottom: '2rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
-          <div>
-            <h1 style={{ fontSize: '1.75rem', fontWeight: 700, marginBottom: '0.5rem' }}>{course.name}</h1>
-            {course.description && (
-              <p style={{ color: C.textSecondary, fontSize: '0.95rem', lineHeight: 1.6, maxWidth: '700px' }}>
-                {course.description}
-              </p>
-            )}
-          </div>
-          <button
-            onClick={() => handleGenerateQuiz('course')}
-            disabled={quizLoading === 'course'}
-            style={{
-              background: C.accent,
-              color: '#fff',
-              border: 'none',
-              borderRadius: '8px',
-              padding: '0.625rem 1.25rem',
-              fontSize: '0.9rem',
-              fontWeight: 600,
-              whiteSpace: 'nowrap',
-              opacity: quizLoading === 'course' ? 0.7 : 1,
-              transition: 'background 0.15s',
-            }}
-            onMouseEnter={(e) => {
-              if (quizLoading !== 'course') e.currentTarget.style.background = C.accentHover;
-            }}
-            onMouseLeave={(e) => (e.currentTarget.style.background = C.accent)}
-          >
-            {quizLoading === 'course' ? 'Generating...' : 'Generate Course Quiz'}
-          </button>
+      <div className="flex items-start justify-between gap-4 flex-wrap mb-8">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold tracking-tight text-zinc-50">{course.name}</h1>
+          {course.description && (
+            <p className="text-sm text-zinc-400 max-w-2xl">
+              {course.description}
+            </p>
+          )}
         </div>
+        <button
+          onClick={() => handleGenerateQuiz('course')}
+          disabled={quizLoading === 'course'}
+          className={`inline-flex items-center gap-2 border border-zinc-700 hover:border-indigo-500/50 hover:bg-indigo-500/10 text-zinc-300 rounded-lg px-4 py-2 text-sm font-medium transition-all bg-transparent ${
+            quizLoading === 'course' ? 'opacity-70 pointer-events-none' : ''
+          }`}
+        >
+          {quizLoading === 'course' ? 'Generating...' : 'Generate Course Quiz'}
+        </button>
       </div>
 
       {/* Sections tree */}
       {course.sections.length === 0 ? (
-        <div
-          style={{
-            background: C.surface,
-            border: `1px solid ${C.border}`,
-            borderRadius: '12px',
-            padding: '2rem',
-            textAlign: 'center',
-          }}
-        >
-          <p style={{ color: C.textSecondary }}>
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <p className="text-zinc-500 text-lg">
             No sections yet. Upload a handout to generate course structure.
           </p>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+        <div className="space-y-4">
           {course.sections.map((section) => (
             <SectionGroup
               key={section.id}
@@ -251,26 +209,10 @@ export default function CourseView({ courseId }: { courseId: string }) {
       )}
 
       {/* Delete course */}
-      <div style={{ marginTop: '3rem', paddingTop: '2rem', borderTop: `1px solid ${C.border}` }}>
+      <div className="mt-8">
         <button
           onClick={handleDeleteCourse}
-          style={{
-            background: 'transparent',
-            border: '1px solid #f8717144',
-            borderRadius: '8px',
-            padding: '0.5rem 1rem',
-            color: '#f87171',
-            fontSize: '0.85rem',
-            transition: 'background 0.15s, border-color 0.15s',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'rgba(248,113,113,0.1)';
-            e.currentTarget.style.borderColor = '#f87171';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'transparent';
-            e.currentTarget.style.borderColor = '#f8717144';
-          }}
+          className="mt-8 border border-red-500/30 text-red-400 hover:bg-red-500/10 hover:border-red-500/50 rounded-lg px-4 py-2 text-sm transition-all bg-transparent"
         >
           Delete Course
         </button>
@@ -299,42 +241,24 @@ function SectionGroup({
   const isQuizzing = quizLoading === section.id;
 
   return (
-    <div
-      style={{
-        background: C.surface,
-        border: `1px solid ${C.border}`,
-        borderRadius: '12px',
-        overflow: 'hidden',
-      }}
-    >
+    <div className="bg-zinc-900 rounded-xl overflow-hidden">
       {/* Section header */}
       <div
         onClick={onToggle}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '1rem 1.25rem',
-          cursor: 'pointer',
-          transition: 'background 0.15s',
-        }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = C.surfaceHover)}
-        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+        className="px-5 py-4 flex items-center justify-between cursor-pointer hover:bg-zinc-800/50 transition-colors"
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <span
-            style={{
-              display: 'inline-block',
-              transition: 'transform 0.15s',
-              transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)',
-              fontSize: '0.8rem',
-              color: C.textSecondary,
-            }}
+        <div className="flex items-center gap-3">
+          <svg
+            className={`w-4 h-4 text-zinc-500 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
           >
-            &#9654;
-          </span>
-          <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>{section.title}</h3>
-          <span style={{ color: C.textSecondary, fontSize: '0.8rem' }}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+          <h3 className="text-base font-medium text-zinc-100">{section.title}</h3>
+          <span className="text-xs text-zinc-500">
             ({section.subtopics.length} subtopic{section.subtopics.length !== 1 ? 's' : ''})
           </span>
         </div>
@@ -344,29 +268,25 @@ function SectionGroup({
             onQuizSection();
           }}
           disabled={isQuizzing}
-          style={{
-            background: 'transparent',
-            border: `1px solid ${C.border}`,
-            borderRadius: '6px',
-            padding: '0.35rem 0.75rem',
-            color: C.accent,
-            fontSize: '0.8rem',
-            fontWeight: 500,
-            opacity: isQuizzing ? 0.7 : 1,
-            transition: 'border-color 0.15s',
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.borderColor = C.accent)}
-          onMouseLeave={(e) => (e.currentTarget.style.borderColor = C.border)}
+          className={`text-xs text-indigo-400 hover:text-indigo-300 bg-transparent border-none transition-colors ${
+            isQuizzing ? 'opacity-70 pointer-events-none' : ''
+          }`}
         >
           {isQuizzing ? 'Generating...' : 'Quiz this section'}
         </button>
       </div>
 
-      {/* Subtopics */}
-      {expanded && section.subtopics.length > 0 && (
-        <div style={{ borderTop: `1px solid ${C.border}` }}>
-          {section.subtopics.map((subtopic) => (
-            <SubtopicRow key={subtopic.id} subtopic={subtopic} statusBadge={getStatusBadge(subtopic.id)} />
+      {/* Section metadata + subtopics */}
+      {expanded && (
+        <div className="border-t border-zinc-800/50">
+          <SectionMeta section={section} />
+          {section.subtopics.map((subtopic, i) => (
+            <SubtopicRow
+              key={subtopic.id}
+              subtopic={subtopic}
+              statusBadge={getStatusBadge(subtopic.id)}
+              isFirst={i === 0}
+            />
           ))}
         </div>
       )}
@@ -374,60 +294,86 @@ function SectionGroup({
   );
 }
 
+/* ── Section Metadata ────────────────────────────────────────────────────── */
+
+function SectionMeta({ section }: { section: Section }) {
+  const objectives: string[] = safeParse(section.learning_objectives);
+  const concepts: string[] = safeParse(section.key_concepts);
+
+  if (objectives.length === 0 && concepts.length === 0) return null;
+
+  return (
+    <div className="px-5 py-4 space-y-4 bg-zinc-950/50">
+      {objectives.length > 0 && (
+        <div>
+          <p className="text-xs text-zinc-500 uppercase tracking-wide font-medium">
+            Learning Objectives
+          </p>
+          <div className="space-y-1 mt-2">
+            {objectives.map((obj, i) => (
+              <p key={i} className="text-sm text-zinc-400 pl-4 border-l-2 border-zinc-800">
+                {obj}
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
+      {concepts.length > 0 && (
+        <div>
+          <p className="text-xs text-zinc-500 uppercase tracking-wide font-medium">
+            Key Concepts
+          </p>
+          <div className="flex flex-wrap gap-2 mt-2">
+            {concepts.map((concept, i) => (
+              <span key={i} className="bg-zinc-800 text-zinc-300 rounded-full px-3 py-1 text-xs">
+                {concept}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function safeParse(val: string | string[]): string[] {
+  if (Array.isArray(val)) return val;
+  if (!val || val === '[]') return [];
+  try { return JSON.parse(val); } catch { return []; }
+}
+
 /* ── Subtopic Row ────────────────────────────────────────────────────────── */
 
 function SubtopicRow({
   subtopic,
   statusBadge,
+  isFirst,
 }: {
   subtopic: Subtopic;
   statusBadge: React.ReactNode;
+  isFirst: boolean;
 }) {
   return (
     <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '0.75rem 1.25rem 0.75rem 3rem',
-        borderBottom: `1px solid ${C.border}`,
-        transition: 'background 0.15s',
-      }}
-      onMouseEnter={(e) => (e.currentTarget.style.background = C.surfaceHover)}
-      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+      className={`group px-5 py-3 flex items-center justify-between hover:bg-zinc-800/50 transition-colors ${
+        isFirst ? '' : 'border-t border-zinc-800/50'
+      }`}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, minWidth: 0 }}>
-        <span
-          style={{
-            fontSize: '0.9rem',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
+      <div className="flex items-center gap-3 flex-1 min-w-0">
+        <span className="text-sm text-zinc-200 truncate">
           {subtopic.title}
         </span>
         {statusBadge}
       </div>
       <a
         href={`/study/${subtopic.id}`}
-        style={{
-          background: C.accent + '18',
-          color: C.accent,
-          border: `1px solid ${C.accent}44`,
-          borderRadius: '6px',
-          padding: '0.35rem 0.85rem',
-          fontSize: '0.8rem',
-          fontWeight: 500,
-          textDecoration: 'none',
-          whiteSpace: 'nowrap',
-          transition: 'background 0.15s',
-        }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = C.accent + '30')}
-        onMouseLeave={(e) => (e.currentTarget.style.background = C.accent + '18')}
+        className="text-sm text-indigo-400 hover:text-indigo-300 opacity-0 group-hover:opacity-100 transition-all flex items-center gap-1 no-underline hover:no-underline"
         onClick={(e) => e.stopPropagation()}
       >
         Study
+        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+        </svg>
       </a>
     </div>
   );
