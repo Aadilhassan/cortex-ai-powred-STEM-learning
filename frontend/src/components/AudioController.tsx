@@ -7,10 +7,11 @@ export default function AudioController({ enabled, onToggle }: AudioControllerPr
   return (
     <button
       onClick={onToggle}
-      style={{
-        ...styles.button,
-        ...(enabled ? styles.enabled : styles.disabled),
-      }}
+      className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all shrink-0 cursor-pointer ${
+        enabled
+          ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10'
+          : 'border-zinc-700 text-zinc-500 bg-transparent hover:border-zinc-500 hover:text-zinc-300'
+      }`}
       title={enabled ? 'Disable text-to-speech' : 'Enable text-to-speech'}
     >
       {enabled ? (
@@ -29,26 +30,3 @@ export default function AudioController({ enabled, onToggle }: AudioControllerPr
     </button>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  button: {
-    border: '2px solid #2a2a3d',
-    borderRadius: '50%',
-    width: '42px',
-    height: '42px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    transition: 'all 0.2s',
-    flexShrink: 0,
-  },
-  enabled: {
-    background: 'rgba(124, 138, 255, 0.1)',
-    borderColor: '#7c8aff',
-    color: '#7c8aff',
-  },
-  disabled: {
-    background: 'none',
-    color: '#8888a0',
-  },
-};
