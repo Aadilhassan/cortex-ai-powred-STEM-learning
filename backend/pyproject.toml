@@ -1,0 +1,28 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "aiosqlite>=0.22.1",
+    "fastapi>=0.133.0",
+    "httpx>=0.28.1",
+    "pymupdf>=1.27.1",
+    "python-dotenv>=1.2.1",
+    "sentence-transformers>=5.2.3",
+    "soundfile>=0.13.1",
+    "uvicorn[standard]>=0.41.0",
+    "websockets>=16.0",
+    "zvec>=0.2.0",
+]
+
+# kittentts installed separately via:
+#   UV_SKIP_WHEEL_FILENAME_CHECK=1 uv pip install https://github.com/KittenML/KittenTTS/releases/download/0.8/kittentts-0.8.0-py3-none-any.whl
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+]
