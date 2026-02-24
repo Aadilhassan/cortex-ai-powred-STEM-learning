@@ -10,21 +10,28 @@ export async function getCourse(id: string) {
   return r.json();
 }
 
-export async function createCourse(name: string, description: string, handoutText: string) {
+export async function createCourse(handoutText: string) {
   const r = await fetch(`${BASE}/courses`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, description, handout_text: handoutText }),
+    body: JSON.stringify({ handout_text: handoutText }),
   });
   return r.json();
 }
 
-export async function uploadCourse(name: string, description: string, file: File) {
+export async function uploadCourse(file: File) {
   const form = new FormData();
-  form.append('name', name);
-  form.append('description', description);
   form.append('file', file);
   const r = await fetch(`${BASE}/courses/upload`, { method: 'POST', body: form });
+  return r.json();
+}
+
+export async function generateDiagram(topic: string, context?: string, diagramType?: string) {
+  const r = await fetch(`${BASE}/diagrams`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ topic, context, diagram_type: diagramType }),
+  });
   return r.json();
 }
 

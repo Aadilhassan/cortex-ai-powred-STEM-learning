@@ -247,8 +247,6 @@ function CreateCourseModal({
   onClose: () => void;
   onCreated: (course: Course) => void;
 }) {
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
   const [tab, setTab] = useState<'paste' | 'upload'>('paste');
   const [handoutText, setHandoutText] = useState('');
   const [file, setFile] = useState<File | null>(null);
@@ -258,8 +256,12 @@ function CreateCourseModal({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function handleCreate() {
-    if (!name.trim()) {
-      setError('Course name is required.');
+    if (tab === 'paste' && !handoutText.trim()) {
+      setError('Please paste your handout text.');
+      return;
+    }
+    if (tab === 'upload' && !file) {
+      setError('Please select a file to upload.');
       return;
     }
 
@@ -269,9 +271,9 @@ function CreateCourseModal({
     try {
       let course: Course;
       if (tab === 'upload' && file) {
-        course = await uploadCourse(name, description, file);
+        course = await uploadCourse(file);
       } else {
-        course = await createCourse(name, description, handoutText);
+        course = await createCourse(handoutText);
       }
       onCreated(course);
     } catch (e) {
@@ -327,31 +329,10 @@ function CreateCourseModal({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1.5rem' }}>Create New Course</h2>
-
-        {/* Name */}
-        <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem', color: C.textSecondary }}>
-          Course Name
-        </label>
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="e.g. Linear Algebra"
-          style={{ ...inputStyle, marginBottom: '1rem' }}
-        />
-
-        {/* Description */}
-        <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem', color: C.textSecondary }}>
-          Description
-        </label>
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="Brief description of the course..."
-          rows={2}
-          style={{ ...inputStyle, marginBottom: '1rem', resize: 'vertical' }}
-        />
+        <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.5rem' }}>Create Course from Handout</h2>
+        <p style={{ color: C.textSecondary, fontSize: '0.85rem', marginBottom: '1.5rem' }}>
+          Upload or paste your handout — the AI will extract the course name, description, and structure automatically.
+        </p>
 
         {/* Tab toggle */}
         <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
@@ -467,7 +448,7 @@ function CreateCourseModal({
               opacity: creating ? 0.7 : 1,
             }}
           >
-            {creating ? 'Creating...' : 'Create Course'}
+            {creating ? 'Analyzing handout...' : 'Create Course'}
           </button>
         </div>
       </div>

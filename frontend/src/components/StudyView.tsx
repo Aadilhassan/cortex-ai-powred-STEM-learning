@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { StudySocket } from '../lib/websocket';
+import { generateDiagram } from '../lib/api';
 import { AudioPlayer } from './AudioPlayer';
 import ChatPanel, { type Message } from './ChatPanel';
 import DiagramPanel from './DiagramPanel';
@@ -60,21 +61,29 @@ export default function StudyView({ subtopicId }: StudyViewProps) {
         }
         break;
       }
+      case 'transcript': {
+        // STT result from backend — show as user message
+        const text = msg.content ?? '';
+        if (text) {
+          // Interrupt any playing audio
+          audioPlayerRef.current?.interrupt();
+          setMessages(prev => [...prev, { role: 'user', content: text }]);
+          setIsThinking(true);
+          streamingTextRef.current = '';
+          setStreamingText('');
+        }
+        break;
+      }
       case 'done': {
         setIsThinking(false);
         const fullText = streamingTextRef.current;
         if (fullText) {
-          const [cleanedText, mermaidBlocks] = extractMermaid(fullText);
+          const [, mermaidBlocks] = extractMermaid(fullText);
           if (mermaidBlocks.length > 0) {
             setDiagrams(prev => [...prev, ...mermaidBlocks]);
             setIsDiagramOpen(true);
           }
-          if (cleanedText) {
-            setMessages(prev => [...prev, { role: 'assistant', content: fullText }]);
-          } else {
-            // Even if all content was mermaid, still add the message
-            setMessages(prev => [...prev, { role: 'assistant', content: fullText }]);
-          }
+          setMessages(prev => [...prev, { role: 'assistant', content: fullText }]);
         }
         streamingTextRef.current = '';
         setStreamingText('');
@@ -82,6 +91,16 @@ export default function StudyView({ subtopicId }: StudyViewProps) {
       }
     }
   }, [extractMermaid]);
+
+  // Load chat history from DB on mount
+  useEffect(() => {
+    fetch(`/api/chat/${subtopicId}/messages`)
+      .then(r => r.ok ? r.json() : [])
+      .then((msgs: Message[]) => {
+        if (msgs.length > 0) setMessages(msgs);
+      })
+      .catch(() => {});
+  }, [subtopicId]);
 
   // Initialize WebSocket and AudioPlayer
   useEffect(() => {
@@ -112,10 +131,13 @@ export default function StudyView({ subtopicId }: StudyViewProps) {
     }
   }, [isTTSEnabled]);
 
-  // Send a message
+  // Send a message — interrupts any playing audio
   const sendMessage = useCallback((text: string) => {
     const trimmed = text.trim();
     if (!trimmed || !socketRef.current) return;
+
+    // Interrupt current audio playback (speak-to-interrupt)
+    audioPlayerRef.current?.interrupt();
 
     setMessages(prev => [...prev, { role: 'user', content: trimmed }]);
     setIsThinking(true);
@@ -130,10 +152,45 @@ export default function StudyView({ subtopicId }: StudyViewProps) {
     sendMessage(inputText);
   };
 
-  const handleVoiceTranscript = useCallback((text: string) => {
-    setIsListening(false);
-    sendMessage(text);
-  }, [sendMessage]);
+  // Send audio data to backend for local STT
+  const handleAudioData = useCallback((base64: string) => {
+    if (!socketRef.current) return;
+    // Interrupt AI audio when user speaks
+    audioPlayerRef.current?.interrupt();
+    socketRef.current.sendRaw({ type: 'audio', data: base64 });
+  }, []);
+
+  const handleVoiceToggle = useCallback(() => {
+    const newListening = !isListening;
+    if (newListening) {
+      audioPlayerRef.current?.interrupt();
+    }
+    setIsListening(newListening);
+  }, [isListening]);
+
+  const handleClearChat = useCallback(async () => {
+    try {
+      await fetch(`/api/chat/${subtopicId}/messages`, { method: 'DELETE' });
+      setMessages([]);
+      setDiagrams([]);
+      setStreamingText('');
+      streamingTextRef.current = '';
+    } catch { /* ignore */ }
+  }, [subtopicId]);
+
+  const handleGenerateDiagram = useCallback(async () => {
+    const topic = prompt('Diagram topic:');
+    if (!topic?.trim()) return;
+    try {
+      const result = await generateDiagram(topic.trim());
+      if (result.mermaid) {
+        setDiagrams(prev => [...prev, result.mermaid]);
+        setIsDiagramOpen(true);
+      }
+    } catch (e) {
+      console.error('Diagram generation failed:', e);
+    }
+  }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -162,12 +219,37 @@ export default function StudyView({ subtopicId }: StudyViewProps) {
             background: isConnected ? '#4ade80' : '#f87171',
           }} title={isConnected ? 'Connected' : 'Disconnected'} />
         </div>
-        <button
-          onClick={() => setIsDiagramOpen(!isDiagramOpen)}
-          style={styles.diagramToggleBtn}
-        >
-          Diagrams {isDiagramOpen ? '\u25B6' : '\u25C0'}
-        </button>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <button
+            onClick={handleClearChat}
+            style={styles.clearChatBtn}
+            title="Clear chat history"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
+            Clear
+          </button>
+          <button
+            onClick={handleGenerateDiagram}
+            style={styles.clearChatBtn}
+            title="Generate a diagram on any topic"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <path d="M12 8v8" />
+              <path d="M8 12h8" />
+            </svg>
+            Diagram
+          </button>
+          <button
+            onClick={() => setIsDiagramOpen(!isDiagramOpen)}
+            style={styles.diagramToggleBtn}
+          >
+            Diagrams {isDiagramOpen ? '\u25B6' : '\u25C0'}
+          </button>
+        </div>
       </div>
 
       {/* Main content area */}
@@ -216,9 +298,9 @@ export default function StudyView({ subtopicId }: StudyViewProps) {
       {/* Input bar */}
       <form onSubmit={handleSubmit} style={styles.inputBar}>
         <VoiceInput
-          onTranscript={handleVoiceTranscript}
+          onAudioData={handleAudioData}
           isListening={isListening}
-          onToggle={() => setIsListening(!isListening)}
+          onToggle={handleVoiceToggle}
         />
 
         <textarea
@@ -297,6 +379,19 @@ const styles: Record<string, React.CSSProperties> = {
     height: '8px',
     borderRadius: '50%',
     flexShrink: 0,
+  },
+  clearChatBtn: {
+    background: 'none',
+    border: '1px solid #2a2a3d',
+    color: '#8888a0',
+    padding: '0.4rem 0.75rem',
+    borderRadius: '6px',
+    fontSize: '0.85rem',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
   },
   diagramToggleBtn: {
     background: 'none',
