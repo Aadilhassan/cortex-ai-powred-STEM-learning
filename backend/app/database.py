@@ -22,6 +22,9 @@ CREATE TABLE IF NOT EXISTS sections (
     course_id TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     summary TEXT DEFAULT '',
+    learning_objectives TEXT DEFAULT '[]',
+    key_concepts TEXT DEFAULT '[]',
+    prerequisites TEXT DEFAULT '[]',
     order_index INTEGER DEFAULT 0
 );
 
@@ -93,6 +96,22 @@ class Database:
         await self._db.execute("PRAGMA foreign_keys = ON")
         await self._db.executescript(_SCHEMA)
         await self._db.commit()
+        await self._migrate()
+
+    async def _migrate(self):
+        """Add columns that may be missing from older schemas."""
+        for col, default in [
+            ("learning_objectives", "'[]'"),
+            ("key_concepts", "'[]'"),
+            ("prerequisites", "'[]'"),
+        ]:
+            try:
+                await self._db.execute(
+                    f"ALTER TABLE sections ADD COLUMN {col} TEXT DEFAULT {default}"
+                )
+            except Exception:
+                pass  # Column already exists
+        await self._db.commit()
 
     async def close(self):
         """Close the database connection."""
@@ -142,6 +161,18 @@ class Database:
         rows = await cursor.fetchall()
         return self._rows_to_list(rows)
 
+    async def update_course(self, course_id: str, **fields):
+        """Update specific fields on a course."""
+        if not fields:
+            return
+        set_clause = ", ".join(f"{k} = ?" for k in fields)
+        values = list(fields.values()) + [course_id]
+        await self._db.execute(
+            f"UPDATE courses SET {set_clause} WHERE id = ?",
+            values,
+        )
+        await self._db.commit()
+
     async def delete_course(self, course_id: str):
         await self._db.execute("DELETE FROM courses WHERE id = ?", (course_id,))
         await self._db.commit()
@@ -154,11 +185,23 @@ class Database:
         title: str,
         summary: str = "",
         order_index: int = 0,
+        learning_objectives: list | None = None,
+        key_concepts: list | None = None,
+        prerequisites: list | None = None,
     ) -> str:
         sid = self._id()
         await self._db.execute(
-            "INSERT INTO sections (id, course_id, title, summary, order_index) VALUES (?, ?, ?, ?, ?)",
-            (sid, course_id, title, summary, order_index),
+            "INSERT INTO sections (id, course_id, title, summary, learning_objectives, key_concepts, prerequisites, order_index) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                sid,
+                course_id,
+                title,
+                summary,
+                json.dumps(learning_objectives or []),
+                json.dumps(key_concepts or []),
+                json.dumps(prerequisites or []),
+                order_index,
+            ),
         )
         await self._db.commit()
         return sid
@@ -242,6 +285,13 @@ class Database:
         )
         await self._db.commit()
         return mid
+
+    async def delete_messages(self, subtopic_id: str):
+        """Delete all messages for a subtopic."""
+        await self._db.execute(
+            "DELETE FROM messages WHERE subtopic_id = ?", (subtopic_id,)
+        )
+        await self._db.commit()
 
     async def get_messages(
         self, subtopic_id: str, limit: int = 50

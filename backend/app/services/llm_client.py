@@ -1,4 +1,4 @@
-"""Z.ai LLM client with streaming and JSON support."""
+"""LLM client with streaming and JSON support (OpenAI-compatible API)."""
 
 from __future__ import annotations
 
@@ -8,18 +8,19 @@ from collections.abc import AsyncIterator
 
 import httpx
 
-BASE_URL = "https://api.z.ai/api"
-COMPLETIONS_ENDPOINT = f"{BASE_URL}/paas/v4/chat/completions"
+DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
 
 # Regex to strip markdown code fences: ```json ... ``` or ``` ... ```
 _FENCE_RE = re.compile(r"^```(?:\w+)?\s*\n(.*?)\n```\s*$", re.DOTALL)
 
 
 class LLMClient:
-    """Async wrapper around the Z.ai chat completions API."""
+    """Async wrapper around an OpenAI-compatible chat completions API."""
 
-    def __init__(self, api_key: str, model: str = "glm-4.7") -> None:
+    def __init__(self, api_key: str, model: str = "minimax/minimax-m2.5", base_url: str = DEFAULT_BASE_URL) -> None:
         self.model = model
+        self.base_url = base_url.rstrip("/")
+        self.completions_url = f"{self.base_url}/chat/completions"
         self.http = httpx.AsyncClient(
             timeout=60.0,
             headers={
@@ -37,7 +38,7 @@ class LLMClient:
     ) -> str:
         """Non-streaming chat. Returns the content string."""
         response = await self.http.post(
-            COMPLETIONS_ENDPOINT,
+            self.completions_url,
             json={
                 "model": self.model,
                 "messages": messages,
@@ -59,7 +60,7 @@ class LLMClient:
         """Streaming chat. Yields text chunks as they arrive via SSE."""
         async with self.http.stream(
             "POST",
-            COMPLETIONS_ENDPOINT,
+            self.completions_url,
             json={
                 "model": self.model,
                 "messages": messages,

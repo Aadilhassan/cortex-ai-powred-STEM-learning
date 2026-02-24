@@ -10,12 +10,14 @@ DATA_DIR = BASE_DIR / "data"
 DB_PATH = DATA_DIR / "study_pal.db"
 VECTOR_DIR = DATA_DIR / "vectors"
 
-ZAI_API_KEY = os.getenv("ZAI_API_KEY", "")
-ZAI_BASE_URL = "https://api.z.ai/api"
-ZAI_MODEL = os.getenv("ZAI_MODEL", "glm-4.7")
+# OpenRouter (primary LLM provider)
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+PRIMARY_MODEL = "minimax/minimax-m2.5"
+DIAGRAM_MODEL = "mistralai/codestral-2501"
 
-TTS_MODEL = "KittenML/kitten-tts-nano-0.8-int8"
-TTS_VOICE = "Bella"
+# Groq (STT only)
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 EMBEDDING_DIM = 384
