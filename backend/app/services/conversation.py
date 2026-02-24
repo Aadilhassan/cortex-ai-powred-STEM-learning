@@ -13,15 +13,16 @@ def build_system_prompt(title: str, summary: str) -> str:
     proactively use Mermaid diagrams for visual explanations.
     """
     return (
-        f"You are a friendly and knowledgeable STEM tutor helping a student learn about "
+        f"You are a friendly STEM tutor having a real-time voice conversation about "
         f'"{title}". {summary}\n\n'
-        f"Guidelines:\n"
-        f"- Explain concepts clearly with examples.\n"
-        f"- Break complex ideas into simple steps.\n"
-        f"- Proactively use Mermaid diagrams (```mermaid ... ```) to illustrate "
-        f"relationships, processes, and structures whenever a visual would help.\n"
-        f"- Encourage the student to ask follow-up questions.\n"
-        f"- Keep responses concise but thorough."
+        f"CRITICAL RULES:\n"
+        f"- Keep responses SHORT (2-4 sentences max). This is a live conversation, not a lecture.\n"
+        f"- Talk naturally like a tutor sitting next to the student. Be direct.\n"
+        f"- Only elaborate when the student asks for more detail.\n"
+        f"- When a visual diagram would genuinely help, include a signal on its own line: [DIAGRAM: brief description of what to visualize]\n"
+        f"- Do NOT write Mermaid code yourself. Just use the [DIAGRAM: ...] signal.\n"
+        f"- Ask the student questions back to check understanding.\n"
+        f"- Never dump walls of text. If a topic is complex, break it across conversation turns.\n"
     )
 
 
@@ -54,7 +55,7 @@ class SentenceBuffer:
             if mermaid_start != -1:
                 # Everything before the mermaid block goes to normal processing
                 before = text[:mermaid_start]
-                after = text[mermaid_start + len("```mermaid"):]
+                after = text[mermaid_start + len("```mermaid") :]
                 self.in_mermaid = True
                 self._mermaid_buffer = after
 
@@ -72,7 +73,7 @@ class SentenceBuffer:
             if close_idx != -1:
                 # Mermaid block ended
                 self.in_mermaid = False
-                remaining = self._mermaid_buffer[close_idx + len("```"):]
+                remaining = self._mermaid_buffer[close_idx + len("```") :]
                 self._mermaid_buffer = ""
                 self.buffer = remaining
                 return self._try_emit()
@@ -84,20 +85,28 @@ class SentenceBuffer:
         if match:
             end_pos = match.end() - 1  # include punctuation, exclude trailing space
             sentence = self.buffer[:end_pos].strip()
-            self.buffer = self.buffer[match.end():].lstrip()
+            self.buffer = self.buffer[match.end() :].lstrip()
             if sentence:
-                return sentence
+                # Strip diagram signals from TTS output
+                cleaned = re.sub(r"\[DIAGRAM:\s*[^\]]+\]", "", sentence).strip()
+                return cleaned if cleaned else None
         return None
 
     def flush(self) -> str | None:
         """Flush remaining buffer content."""
         text = self.buffer.strip()
         self.buffer = ""
-        return text if text else None
+        if text:
+            cleaned = re.sub(r"\[DIAGRAM:\s*[^\]]+\]", "", text).strip()
+            return cleaned if cleaned else None
+        return None
 
 
 # Regex to extract mermaid blocks from full response text
 _MERMAID_BLOCK_RE = re.compile(r"```mermaid\s*\n(.*?)```", re.DOTALL)
+
+# Regex to detect [DIAGRAM: ...] signals in tutor response
+_DIAGRAM_SIGNAL_RE = re.compile(r"\[DIAGRAM:\s*(.+?)\]")
 
 
 class ConversationManager:
@@ -108,15 +117,14 @@ class ConversationManager:
     and extracts mermaid diagrams.
     """
 
-    def __init__(self, db, llm, embedder, vector_store) -> None:
+    def __init__(self, db, llm, embedder, vector_store, diagram_service=None) -> None:
         self.db = db
         self.llm = llm
         self.embedder = embedder
         self.vector_store = vector_store
+        self.diagram_service = diagram_service
 
-    async def get_context(
-        self, subtopic_id: str, user_message: str
-    ) -> list[dict]:
+    async def get_context(self, subtopic_id: str, user_message: str) -> list[dict]:
         """Build the full message list for the LLM.
 
         1. System prompt from subtopic title/summary
@@ -135,28 +143,35 @@ class ConversationManager:
 
         messages: list[dict] = [system_msg]
 
-        # 2. Retrieve relevant chunks via vector search
-        query_embedding = self.embedder.embed(user_message)
-        search_results = self.vector_store.search(
-            query_embedding, topk=5, subtopic_id=subtopic_id
-        )
+        # 2. Retrieve relevant chunks via vector search (or fallback to DB chunks)
+        if self.embedder and self.vector_store:
+            query_embedding = self.embedder.embed(user_message)
+            search_results = self.vector_store.search(
+                query_embedding, topk=5, subtopic_id=subtopic_id
+            )
 
-        if search_results:
-            # Get the actual chunk content from the database
+            if search_results:
+                all_chunks = await self.db.get_chunks_by_subtopic(subtopic_id)
+                chunk_map = {c["id"]: c["content"] for c in all_chunks}
+
+                context_parts = []
+                for result in search_results:
+                    chunk_content = chunk_map.get(result["id"])
+                    if chunk_content:
+                        context_parts.append(chunk_content)
+
+                if context_parts:
+                    context_block = (
+                        "[CONTEXT]\n" + "\n---\n".join(context_parts) + "\n[/CONTEXT]"
+                    )
+                    messages.append({"role": "user", "content": context_block})
+        else:
+            # Fallback: use raw chunks from DB without vector ranking
             all_chunks = await self.db.get_chunks_by_subtopic(subtopic_id)
-            chunk_map = {c["id"]: c["content"] for c in all_chunks}
-
-            context_parts = []
-            for result in search_results:
-                chunk_content = chunk_map.get(result["id"])
-                if chunk_content:
-                    context_parts.append(chunk_content)
-
-            if context_parts:
+            if all_chunks:
+                context_parts = [c["content"] for c in all_chunks[:5]]
                 context_block = (
-                    "[CONTEXT]\n"
-                    + "\n---\n".join(context_parts)
-                    + "\n[/CONTEXT]"
+                    "[CONTEXT]\n" + "\n---\n".join(context_parts) + "\n[/CONTEXT]"
                 )
                 messages.append({"role": "user", "content": context_block})
 
@@ -211,10 +226,30 @@ class ConversationManager:
         if remaining:
             yield ("sentence", remaining)
 
-        # Extract mermaid diagrams from full response
-        diagrams = _MERMAID_BLOCK_RE.findall(full_response)
-        for diagram in diagrams:
-            yield ("diagram", diagram.strip())
+        # Detect diagram signals and generate via diagram service
+        diagrams = []
+        if self.diagram_service:
+            signals = _DIAGRAM_SIGNAL_RE.findall(full_response)
+            subtopic = await self.db.get_subtopic(subtopic_id)
+            subtopic_context = subtopic.get("summary", "") if subtopic else ""
+
+            for signal_topic in signals:
+                try:
+                    diagram_code = await self.diagram_service.generate(
+                        topic=signal_topic,
+                        context=subtopic_context,
+                    )
+                    diagrams.append(diagram_code)
+                    yield ("diagram", diagram_code)
+                except Exception as e:
+                    print(f"[conversation] Diagram generation failed: {e}")
+
+        # Also extract any inline mermaid blocks (fallback)
+        inline_diagrams = _MERMAID_BLOCK_RE.findall(full_response)
+        for diagram in inline_diagrams:
+            stripped = diagram.strip()
+            diagrams.append(stripped)
+            yield ("diagram", stripped)
 
         # Save assistant message with diagrams
         await self.db.save_message(
