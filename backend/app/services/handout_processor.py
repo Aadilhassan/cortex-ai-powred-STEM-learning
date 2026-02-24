@@ -34,24 +34,37 @@ def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> list[str]
     return chunks
 
 
-PARSE_PROMPT = """You are a course content analyzer. Parse the following course handout into sections and subtopics.
+PARSE_PROMPT = """You are a course content analyzer. Analyze the following course handout and extract a complete course structure.
 
 Return ONLY valid JSON (no markdown fences) in this exact format:
-[
-  {
-    "title": "Section Title",
-    "summary": "Brief section summary",
-    "subtopics": [
-      {
-        "title": "Subtopic Title",
-        "content": "Full subtopic content from the handout",
-        "summary": "Brief subtopic summary"
-      }
-    ]
-  }
-]
+{
+  "name": "Course Name (inferred from the handout content)",
+  "description": "A 1-2 sentence description of what this course covers",
+  "sections": [
+    {
+      "title": "Section Title",
+      "summary": "Brief section summary",
+      "learning_objectives": ["Objective 1", "Objective 2"],
+      "key_concepts": ["Concept 1", "Concept 2"],
+      "prerequisites": ["Prerequisite 1"],
+      "subtopics": [
+        {
+          "title": "Subtopic Title",
+          "content": "Full subtopic content from the handout",
+          "summary": "Brief subtopic summary"
+        }
+      ]
+    }
+  ]
+}
 
-Group related content logically. Each subtopic should be a focused, teachable unit.
+Rules:
+- Infer the course name and description from the handout content
+- Group related content logically into sections
+- Each subtopic should be a focused, teachable unit
+- Learning objectives should describe what students will be able to do after studying the section
+- Key concepts are the important terms and ideas in the section
+- Prerequisites are what students should know before this section
 
 HANDOUT:
 """
@@ -67,14 +80,28 @@ class HandoutProcessor:
         self.vector_store = vector_store
 
     async def process(self, course_id: str, text: str):
-        """Parse handout text into sections/subtopics, chunk, embed, and index."""
-        sections = await self.llm.chat_json(
+        """Parse handout text into sections/subtopics, chunk, embed, and index.
+
+        Returns a dict with ``name`` and ``description`` auto-extracted from
+        the handout content.
+        """
+        result = await self.llm.chat_json(
             [{"role": "user", "content": PARSE_PROMPT + text}]
         )
 
+        name = result.get("name", "")
+        description = result.get("description", "")
+        sections = result.get("sections", [])
+
         for sec_idx, section in enumerate(sections):
             section_id = await self.db.create_section(
-                course_id, section["title"], section.get("summary", ""), sec_idx
+                course_id,
+                section["title"],
+                section.get("summary", ""),
+                sec_idx,
+                learning_objectives=section.get("learning_objectives", []),
+                key_concepts=section.get("key_concepts", []),
+                prerequisites=section.get("prerequisites", []),
             )
 
             for st_idx, subtopic in enumerate(section.get("subtopics", [])):
@@ -90,22 +117,29 @@ class HandoutProcessor:
                 if not content:
                     continue
                 chunks = chunk_text(content)
-                embeddings = self.embedder.embed_batch(chunks)
 
-                batch = []
-                for i, (chunk_text_val, emb) in enumerate(zip(chunks, embeddings)):
-                    chunk_id = await self.db.create_chunk(
-                        subtopic_id, chunk_text_val, i
-                    )
-                    batch.append(
-                        {
-                            "id": chunk_id,
-                            "embedding": emb,
-                            "subtopic_id": subtopic_id,
-                        }
-                    )
+                # Store chunks in DB regardless of vector store availability
+                for i, chunk_text_val in enumerate(chunks):
+                    await self.db.create_chunk(subtopic_id, chunk_text_val, i)
 
-                if batch:
-                    self.vector_store.add_batch(batch)
+                # Embed and index only if both embedder and vector store are available
+                if self.embedder and self.vector_store:
+                    embeddings = self.embedder.embed_batch(chunks)
+                    batch = []
+                    for i, (chunk_text_val, emb) in enumerate(
+                        zip(chunks, embeddings)
+                    ):
+                        batch.append(
+                            {
+                                "id": f"{subtopic_id}_{i}",
+                                "embedding": emb,
+                                "subtopic_id": subtopic_id,
+                            }
+                        )
+                    if batch:
+                        self.vector_store.add_batch(batch)
 
-        self.vector_store.optimize()
+        if self.vector_store:
+            self.vector_store.optimize()
+
+        return {"name": name, "description": description}
