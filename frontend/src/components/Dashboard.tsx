@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { listCourses, createCourse, uploadCourse, deleteCourse } from '../lib/api';
+import { useState, useEffect } from 'react';
+import { listCourses, deleteCourse } from '../lib/api';
 
 /* ── Types ───────────────────────────────────────────────────────────────── */
 
@@ -12,27 +12,11 @@ interface Course {
   sections?: { id: string; subtopics?: unknown[] }[];
 }
 
-/* ── Palette ─────────────────────────────────────────────────────────────── */
-
-const C = {
-  bg: '#0f0f13',
-  surface: '#1a1a24',
-  surfaceHover: '#252536',
-  border: '#2a2a3d',
-  text: '#e0e0e0',
-  textSecondary: '#8888a0',
-  accent: '#7c8aff',
-  accentHover: '#9ba6ff',
-  success: '#4ade80',
-  warning: '#fbbf24',
-} as const;
-
 /* ── Component ───────────────────────────────────────────────────────────── */
 
 export default function Dashboard() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
     loadCourses();
@@ -60,49 +44,48 @@ export default function Dashboard() {
   }
 
   return (
-    <div>
+    <div className="space-y-6">
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-        <h1 style={{ fontSize: '1.75rem', fontWeight: 700 }}>Your Courses</h1>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-zinc-50">Your Courses</h1>
+          <p className="text-sm text-zinc-500 mt-1">Continue learning or start something new</p>
+        </div>
         <button
-          onClick={() => setShowModal(true)}
-          style={{
-            background: C.accent,
-            color: '#fff',
-            border: 'none',
-            borderRadius: '8px',
-            padding: '0.625rem 1.25rem',
-            fontSize: '0.9rem',
-            fontWeight: 600,
-            transition: 'background 0.15s',
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = C.accentHover)}
-          onMouseLeave={(e) => (e.currentTarget.style.background = C.accent)}
+          onClick={() => (window.location.href = '/new')}
+          className="inline-flex items-center gap-2 bg-indigo-500 hover:bg-indigo-400 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors"
         >
           + New Course
         </button>
       </div>
 
       {/* Loading */}
-      {loading && <p style={{ color: C.textSecondary }}>Loading courses...</p>}
+      {loading && <p className="text-zinc-500 text-center py-20">Loading courses...</p>}
 
       {/* Empty state */}
       {!loading && courses.length === 0 && (
-        <div style={{ textAlign: 'center', padding: '4rem 1rem' }}>
-          <p style={{ color: C.textSecondary, fontSize: '1.1rem', marginBottom: '1rem' }}>
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <svg
+            className="text-zinc-600"
+            width="48"
+            height="48"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={1.5}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"
+            />
+          </svg>
+          <p className="text-zinc-500 mt-4 mb-6 text-lg">
             No courses yet. Create your first course!
           </p>
           <button
-            onClick={() => setShowModal(true)}
-            style={{
-              background: C.accent,
-              color: '#fff',
-              border: 'none',
-              borderRadius: '8px',
-              padding: '0.75rem 1.5rem',
-              fontSize: '1rem',
-              fontWeight: 600,
-            }}
+            onClick={() => (window.location.href = '/new')}
+            className="inline-flex items-center gap-2 bg-indigo-500 hover:bg-indigo-400 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors"
           >
             + Create Course
           </button>
@@ -111,28 +94,11 @@ export default function Dashboard() {
 
       {/* Course grid */}
       {!loading && courses.length > 0 && (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-            gap: '1.25rem',
-          }}
-        >
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {courses.map((course) => (
             <CourseCard key={course.id} course={course} onDelete={handleDelete} />
           ))}
         </div>
-      )}
-
-      {/* Create modal */}
-      {showModal && (
-        <CreateCourseModal
-          onClose={() => setShowModal(false)}
-          onCreated={(newCourse) => {
-            setShowModal(false);
-            window.location.href = `/course/${newCourse.id}`;
-          }}
-        />
       )}
     </div>
   );
@@ -147,13 +113,7 @@ function CourseCard({
   course: Course;
   onDelete: (id: string, name: string) => void;
 }) {
-  const [hovered, setHovered] = useState(false);
-
   const sectionCount = course.sections?.length ?? 0;
-  const desc =
-    course.description.length > 120
-      ? course.description.slice(0, 120) + '...'
-      : course.description;
   const date = new Date(course.created_at).toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
@@ -162,18 +122,7 @@ function CourseCard({
 
   return (
     <div
-      style={{
-        background: C.surface,
-        border: `1px solid ${hovered ? C.accent : C.border}`,
-        borderRadius: '12px',
-        padding: '1.25rem',
-        position: 'relative',
-        transition: 'border-color 0.15s, background 0.15s',
-        cursor: 'pointer',
-        ...(hovered ? { background: C.surfaceHover } : {}),
-      }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      className="group bg-zinc-900 rounded-xl p-5 hover:bg-zinc-800/80 hover:ring-1 hover:ring-indigo-500/30 transition-all duration-200 cursor-pointer relative"
       onClick={() => (window.location.href = `/course/${course.id}`)}
     >
       {/* Delete button */}
@@ -183,274 +132,40 @@ function CourseCard({
           onDelete(course.id, course.name);
         }}
         title="Delete course"
-        style={{
-          position: 'absolute',
-          top: '0.75rem',
-          right: '0.75rem',
-          background: 'transparent',
-          border: 'none',
-          color: C.textSecondary,
-          fontSize: '1.1rem',
-          lineHeight: 1,
-          padding: '0.25rem 0.4rem',
-          borderRadius: '4px',
-          transition: 'color 0.15s, background 0.15s',
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.color = '#f87171';
-          e.currentTarget.style.background = 'rgba(248,113,113,0.1)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.color = C.textSecondary;
-          e.currentTarget.style.background = 'transparent';
-        }}
+        className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-zinc-600 hover:text-red-400 hover:bg-red-500/10 transition-all"
       >
-        x
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
       </button>
 
-      <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '0.5rem', paddingRight: '1.5rem' }}>
+      <h3 className="text-lg font-medium text-zinc-50">
         {course.name}
       </h3>
 
-      {desc && (
-        <p style={{ color: C.textSecondary, fontSize: '0.875rem', lineHeight: 1.5, marginBottom: '0.75rem' }}>
-          {desc}
+      {course.description && (
+        <p className="text-sm text-zinc-400 mt-2 line-clamp-2">
+          {course.description}
         </p>
       )}
 
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          fontSize: '0.8rem',
-          color: C.textSecondary,
-        }}
-      >
+      <div className="flex items-center gap-3 mt-4 text-xs text-zinc-500">
         <span>{date}</span>
         {sectionCount > 0 && (
-          <span style={{ background: C.bg, padding: '0.2rem 0.5rem', borderRadius: '4px' }}>
+          <span className="bg-zinc-800 text-zinc-400 rounded-full px-2.5 py-0.5">
             {sectionCount} section{sectionCount !== 1 ? 's' : ''}
           </span>
         )}
-      </div>
-    </div>
-  );
-}
-
-/* ── Create Course Modal ─────────────────────────────────────────────────── */
-
-function CreateCourseModal({
-  onClose,
-  onCreated,
-}: {
-  onClose: () => void;
-  onCreated: (course: Course) => void;
-}) {
-  const [tab, setTab] = useState<'paste' | 'upload'>('paste');
-  const [handoutText, setHandoutText] = useState('');
-  const [file, setFile] = useState<File | null>(null);
-  const [creating, setCreating] = useState(false);
-  const [error, setError] = useState('');
-  const [dragOver, setDragOver] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  async function handleCreate() {
-    if (tab === 'paste' && !handoutText.trim()) {
-      setError('Please paste your handout text.');
-      return;
-    }
-    if (tab === 'upload' && !file) {
-      setError('Please select a file to upload.');
-      return;
-    }
-
-    setCreating(true);
-    setError('');
-
-    try {
-      let course: Course;
-      if (tab === 'upload' && file) {
-        course = await uploadCourse(file);
-      } else {
-        course = await createCourse(handoutText);
-      }
-      onCreated(course);
-    } catch (e) {
-      console.error('Failed to create course', e);
-      setError('Failed to create course. Please try again.');
-    } finally {
-      setCreating(false);
-    }
-  }
-
-  function handleDrop(e: React.DragEvent) {
-    e.preventDefault();
-    setDragOver(false);
-    const dropped = e.dataTransfer.files[0];
-    if (dropped) setFile(dropped);
-  }
-
-  const inputStyle: React.CSSProperties = {
-    width: '100%',
-    background: C.bg,
-    border: `1px solid ${C.border}`,
-    borderRadius: '8px',
-    padding: '0.75rem',
-    color: C.text,
-    fontSize: '0.9rem',
-    outline: 'none',
-    fontFamily: 'inherit',
-  };
-
-  return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0,0,0,0.7)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 100,
-      }}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          background: C.surface,
-          border: `1px solid ${C.border}`,
-          borderRadius: '16px',
-          padding: '2rem',
-          width: '100%',
-          maxWidth: '560px',
-          maxHeight: '90vh',
-          overflowY: 'auto',
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.5rem' }}>Create Course from Handout</h2>
-        <p style={{ color: C.textSecondary, fontSize: '0.85rem', marginBottom: '1.5rem' }}>
-          Upload or paste your handout — the AI will extract the course name, description, and structure automatically.
-        </p>
-
-        {/* Tab toggle */}
-        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-          {(['paste', 'upload'] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              style={{
-                flex: 1,
-                padding: '0.5rem',
-                borderRadius: '8px',
-                border: `1px solid ${tab === t ? C.accent : C.border}`,
-                background: tab === t ? C.accent + '22' : 'transparent',
-                color: tab === t ? C.accent : C.textSecondary,
-                fontSize: '0.85rem',
-                fontWeight: 500,
-                transition: 'all 0.15s',
-              }}
-            >
-              {t === 'paste' ? 'Paste Text' : 'Upload File'}
-            </button>
-          ))}
-        </div>
-
-        {/* Paste tab */}
-        {tab === 'paste' && (
-          <textarea
-            value={handoutText}
-            onChange={(e) => setHandoutText(e.target.value)}
-            placeholder="Paste your handout or lecture notes here..."
-            rows={8}
-            style={{ ...inputStyle, marginBottom: '1rem', resize: 'vertical' }}
-          />
-        )}
-
-        {/* Upload tab */}
-        {tab === 'upload' && (
-          <div
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragOver(true);
-            }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-            style={{
-              border: `2px dashed ${dragOver ? C.accent : C.border}`,
-              borderRadius: '12px',
-              padding: '2rem',
-              textAlign: 'center',
-              cursor: 'pointer',
-              marginBottom: '1rem',
-              transition: 'border-color 0.15s',
-              background: dragOver ? C.accent + '08' : 'transparent',
-            }}
-          >
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,.txt,.md"
-              style={{ display: 'none' }}
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) setFile(f);
-              }}
-            />
-            {file ? (
-              <p style={{ color: C.text, fontSize: '0.9rem' }}>{file.name}</p>
-            ) : (
-              <>
-                <p style={{ color: C.textSecondary, marginBottom: '0.5rem' }}>
-                  Drop a file here, or click to browse
-                </p>
-                <p style={{ color: C.textSecondary, fontSize: '0.8rem' }}>
-                  Accepts .pdf, .txt, .md
-                </p>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Error */}
-        {error && (
-          <p style={{ color: '#f87171', fontSize: '0.85rem', marginBottom: '1rem' }}>{error}</p>
-        )}
-
-        {/* Actions */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'transparent',
-              border: `1px solid ${C.border}`,
-              borderRadius: '8px',
-              padding: '0.625rem 1.25rem',
-              color: C.textSecondary,
-              fontSize: '0.9rem',
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleCreate}
-            disabled={creating}
-            style={{
-              background: creating ? C.textSecondary : C.accent,
-              color: '#fff',
-              border: 'none',
-              borderRadius: '8px',
-              padding: '0.625rem 1.25rem',
-              fontSize: '0.9rem',
-              fontWeight: 600,
-              opacity: creating ? 0.7 : 1,
-            }}
-          >
-            {creating ? 'Analyzing handout...' : 'Create Course'}
-          </button>
-        </div>
       </div>
     </div>
   );
