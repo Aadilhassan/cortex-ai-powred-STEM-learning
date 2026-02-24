@@ -1,15 +1,7 @@
 ---
-// src/pages/index.astro
+import Layout from '../layouts/Layout.astro';
+import Dashboard from '../components/Dashboard.tsx';
 ---
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <meta name="viewport" content="width=device-width" />
-  <title>Study Pal</title>
-</head>
-<body>
-  <h1>Study Pal</h1>
-  <p>Frontend initialized.</p>
-</body>
-</html>
+<Layout title="Dashboard - Study Pal">
+  <Dashboard client:load />
+</Layout>
