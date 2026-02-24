@@ -16,17 +16,52 @@ function initMermaid() {
       theme: 'dark',
       themeVariables: {
         darkMode: true,
-        background: '#1a1a24',
-        primaryColor: '#7c8aff',
-        primaryTextColor: '#e0e0e0',
-        primaryBorderColor: '#2a2a3d',
-        lineColor: '#8888a0',
-        secondaryColor: '#2a2a3d',
-        tertiaryColor: '#0f0f13',
+        background: '#18181b',      // zinc-900
+        primaryColor: '#818cf8',     // indigo-400
+        primaryTextColor: '#d4d4d8', // zinc-300
+        primaryBorderColor: '#3f3f46', // zinc-700
+        lineColor: '#71717a',        // zinc-500
+        secondaryColor: '#27272a',   // zinc-800
+        tertiaryColor: '#09090b',    // zinc-950
       },
     });
     mermaidInitialized = true;
   }
+}
+
+function sanitizeMermaidCode(code: string): string {
+  // Trim and normalize whitespace
+  let cleaned = code.trim();
+
+  // Remove style/classDef lines that mermaid chokes on from LLM output
+  cleaned = cleaned.replace(/^\s*style\s+\w+\s+.*$/gm, '');
+  cleaned = cleaned.replace(/^\s*classDef\s+\w+\s+.*$/gm, '');
+  cleaned = cleaned.replace(/^\s*class\s+\w[\w,]*\s+\w+\s*$/gm, '');
+
+  // Fix invalid -->|label|> syntax: should be -->|label| (no trailing >)
+  // Matches any arrow with pipe-delimited label followed by extra >
+  cleaned = cleaned.replace(/(--[->])\|([^|]*)\|>/g, '$1|$2|');
+
+  // Fix node labels: parentheses inside [] brackets break mermaid
+  // e.g. A[Address Pins (A0-A19)] -> A["Address Pins (A0-A19)"]
+  cleaned = cleaned.replace(/\[([^\]]*\([^\]]*\)[^\]]*)\]/g, '["$1"]');
+
+  // Fix multiline node labels: newlines inside bracket labels break Mermaid
+  // Handle both quoted ["..."] and unquoted [...] labels that span multiple lines
+  cleaned = cleaned.replace(/\["([\s\S]*?)"\]/g, (_match, inner: string) => {
+    const fixed = inner.replace(/\n/g, '<br/>');
+    return `["${fixed}"]`;
+  });
+  // Also catch unquoted multiline labels like [Foo\nBar] and quote+fix them
+  cleaned = cleaned.replace(/\[([^\]"]*\n[^\]]*)\]/g, (_match, inner: string) => {
+    const fixed = inner.replace(/\n/g, '<br/>');
+    return `["${fixed}"]`;
+  });
+
+  // Remove empty lines left from stripping style lines
+  cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+
+  return cleaned;
 }
 
 function DiagramRenderer({ code, index }: { code: string; index: number }) {
@@ -34,17 +69,30 @@ function DiagramRenderer({ code, index }: { code: string; index: number }) {
 
   const renderDiagram = useCallback(async () => {
     if (!containerRef.current) return;
+    const sanitized = sanitizeMermaidCode(code);
     try {
       initMermaid();
       const id = `mermaid-diagram-${index}-${Date.now()}`;
-      const { svg } = await mermaid.render(id, code);
+      const { svg } = await mermaid.render(id, sanitized);
       if (containerRef.current) {
         containerRef.current.innerHTML = svg;
       }
     } catch (err) {
-      console.error('Mermaid render error:', err);
-      if (containerRef.current) {
-        containerRef.current.innerHTML = `<pre style="color: #ff6b6b; padding: 1em; font-size: 0.85em; white-space: pre-wrap;">Diagram render error:\n${code}</pre>`;
+      console.error('Mermaid render error:', err, '\nSanitized code:', sanitized);
+      // Second attempt: quote all unquoted labels
+      try {
+        const quoted = sanitized.replace(/\[([^\]"]+)\]/g, '["$1"]');
+        const retryId = `mermaid-retry-${index}-${Date.now()}`;
+        const { svg } = await mermaid.render(retryId, quoted);
+        if (containerRef.current) {
+          containerRef.current.innerHTML = svg;
+        }
+      } catch (retryErr) {
+        console.error('Mermaid retry also failed:', retryErr);
+        if (containerRef.current) {
+          const errMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+          containerRef.current.innerHTML = `<pre style="color: #f87171; padding: 1em; font-size: 0.85em; white-space: pre-wrap;">Diagram render failed: ${errMsg}\n\nCode:\n${sanitized}</pre>`;
+        }
       }
     }
   }, [code, index]);
@@ -56,14 +104,7 @@ function DiagramRenderer({ code, index }: { code: string; index: number }) {
   return (
     <div
       ref={containerRef}
-      style={{
-        background: '#12121a',
-        borderRadius: '8px',
-        padding: '1rem',
-        border: '1px solid #2a2a3d',
-        overflow: 'auto',
-        textAlign: 'center',
-      }}
+      className="bg-zinc-950 rounded-lg border border-zinc-800 p-4 overflow-auto text-center"
     />
   );
 }
@@ -71,7 +112,11 @@ function DiagramRenderer({ code, index }: { code: string; index: number }) {
 export default function DiagramPanel({ diagrams, isOpen, onToggle }: DiagramPanelProps) {
   if (!isOpen) {
     return (
-      <button onClick={onToggle} style={styles.collapsedToggle} title="Open diagram panel">
+      <button
+        onClick={onToggle}
+        className="absolute right-0 top-1/2 -translate-y-1/2 bg-zinc-900 border border-zinc-800 border-r-0 text-zinc-500 hover:text-indigo-400 px-1.5 py-3 rounded-l-lg flex items-center cursor-pointer z-10 transition-colors bg-transparent"
+        title="Open diagram panel"
+      >
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <polyline points="15 18 9 12 15 6" />
         </svg>
@@ -83,39 +128,43 @@ export default function DiagramPanel({ diagrams, isOpen, onToggle }: DiagramPane
   const previousDiagrams = diagrams.length > 1 ? diagrams.slice(0, -1).reverse() : [];
 
   return (
-    <div style={styles.panel}>
-      <div style={styles.header}>
-        <span style={styles.headerTitle}>Diagrams</span>
-        <button onClick={onToggle} style={styles.toggleButton} title="Close diagram panel">
+    <div className="flex flex-col h-full border-l border-zinc-800 bg-sp-base">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800/50 bg-zinc-900 shrink-0">
+        <span className="text-sm font-semibold text-zinc-200">Diagrams</span>
+        <button
+          onClick={onToggle}
+          className="p-1 rounded-md text-zinc-500 hover:text-zinc-300 transition-colors bg-transparent border-none cursor-pointer flex items-center justify-center"
+          title="Close diagram panel"
+        >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <polyline points="9 18 15 12 9 6" />
           </svg>
         </button>
       </div>
 
-      <div style={styles.content}>
+      <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
         {diagrams.length === 0 ? (
-          <div style={styles.emptyState}>
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#8888a0" strokeWidth="1.5">
+          <div className="flex flex-col items-center justify-center h-full text-center px-8">
+            <svg className="text-zinc-500" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
               <rect x="3" y="3" width="18" height="18" rx="2" />
               <path d="M3 9h18M9 21V9" />
             </svg>
-            <p style={{ color: '#8888a0', marginTop: '0.75rem', fontSize: '0.9rem' }}>
+            <p className="text-zinc-500 mt-3 text-sm">
               Diagrams will appear here as the AI generates them during your conversation.
             </p>
           </div>
         ) : (
           <>
             {latestDiagram && (
-              <div style={styles.latestSection}>
-                <span style={styles.sectionLabel}>Latest</span>
+              <div className="flex flex-col gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Latest</span>
                 <DiagramRenderer code={latestDiagram} index={diagrams.length - 1} />
               </div>
             )}
 
             {previousDiagrams.length > 0 && (
-              <div style={styles.previousSection}>
-                <span style={styles.sectionLabel}>Previous</span>
+              <div className="flex flex-col gap-3 mt-2">
+                <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Previous</span>
                 {previousDiagrams.map((code, i) => (
                   <DiagramRenderer
                     key={`prev-${diagrams.length - 2 - i}`}
@@ -131,88 +180,3 @@ export default function DiagramPanel({ diagrams, isOpen, onToggle }: DiagramPane
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  panel: {
-    display: 'flex',
-    flexDirection: 'column',
-    height: '100%',
-    borderLeft: '1px solid #2a2a3d',
-    background: '#0f0f13',
-  },
-  header: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '0.75rem 1rem',
-    borderBottom: '1px solid #2a2a3d',
-    background: '#1a1a24',
-  },
-  headerTitle: {
-    fontWeight: 600,
-    fontSize: '0.9rem',
-    color: '#e0e0e0',
-  },
-  toggleButton: {
-    background: 'none',
-    border: 'none',
-    color: '#8888a0',
-    padding: '4px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: '4px',
-    transition: 'color 0.2s',
-  },
-  collapsedToggle: {
-    position: 'absolute',
-    right: 0,
-    top: '50%',
-    transform: 'translateY(-50%)',
-    background: '#1a1a24',
-    border: '1px solid #2a2a3d',
-    borderRight: 'none',
-    color: '#8888a0',
-    padding: '12px 4px',
-    borderRadius: '8px 0 0 8px',
-    display: 'flex',
-    alignItems: 'center',
-    cursor: 'pointer',
-    zIndex: 10,
-  },
-  content: {
-    flex: 1,
-    overflowY: 'auto',
-    padding: '1rem',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '1rem',
-  },
-  emptyState: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: '100%',
-    textAlign: 'center',
-    padding: '2rem',
-  },
-  latestSection: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.5rem',
-  },
-  previousSection: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.75rem',
-    marginTop: '0.5rem',
-  },
-  sectionLabel: {
-    fontSize: '0.75rem',
-    fontWeight: 600,
-    textTransform: 'uppercase' as const,
-    letterSpacing: '0.05em',
-    color: '#8888a0',
-  },
-};
