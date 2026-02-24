@@ -47,20 +47,6 @@ interface SubmitResult {
   feedback: FeedbackItem[];
 }
 
-/* ── Theme tokens ─────────────────────────────────────────────────────── */
-
-const colors = {
-  bg: '#0f0f13',
-  surface: '#1a1a24',
-  border: '#2a2a3d',
-  text: '#e0e0e0',
-  textMuted: '#8888a0',
-  accent: '#7c8aff',
-  success: '#4ade80',
-  error: '#f87171',
-  warning: '#facc15',
-} as const;
-
 /* ── Mermaid diagram component ────────────────────────────────────────── */
 
 function MermaidDiagram({ code, id }: { code: string; id: string }) {
@@ -77,10 +63,14 @@ function MermaidDiagram({ code, id }: { code: string; id: string }) {
           startOnLoad: false,
           theme: 'dark',
           themeVariables: {
-            primaryColor: colors.accent,
-            primaryTextColor: colors.text,
-            lineColor: colors.border,
-            background: colors.surface,
+            darkMode: true,
+            background: '#18181b',
+            primaryColor: '#818cf8',
+            primaryTextColor: '#d4d4d8',
+            primaryBorderColor: '#3f3f46',
+            lineColor: '#71717a',
+            secondaryColor: '#27272a',
+            tertiaryColor: '#09090b',
           },
         });
 
@@ -102,15 +92,7 @@ function MermaidDiagram({ code, id }: { code: string; id: string }) {
 
   if (error) {
     return (
-      <pre style={{
-        background: colors.bg,
-        border: `1px solid ${colors.border}`,
-        borderRadius: '8px',
-        padding: '1rem',
-        overflow: 'auto',
-        fontSize: '0.85rem',
-        color: colors.textMuted,
-      }}>
+      <pre className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 overflow-auto text-sm text-zinc-500">
         {code}
       </pre>
     );
@@ -119,15 +101,7 @@ function MermaidDiagram({ code, id }: { code: string; id: string }) {
   return (
     <div
       ref={containerRef}
-      style={{
-        background: colors.bg,
-        border: `1px solid ${colors.border}`,
-        borderRadius: '8px',
-        padding: '1rem',
-        overflow: 'auto',
-        display: 'flex',
-        justifyContent: 'center',
-      }}
+      className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 overflow-auto flex justify-center"
     />
   );
 }
@@ -191,7 +165,7 @@ export default function QuizView({ quizId }: { quizId: string }) {
 
   if (loading) {
     return (
-      <div style={{ textAlign: 'center', padding: '4rem 0', color: colors.textMuted }}>
+      <div className="text-center py-16 text-zinc-500">
         Loading quiz...
       </div>
     );
@@ -199,7 +173,7 @@ export default function QuizView({ quizId }: { quizId: string }) {
 
   if (error && !quiz) {
     return (
-      <div style={{ textAlign: 'center', padding: '4rem 0', color: colors.error }}>
+      <div className="text-center py-16 text-red-400">
         {error}
       </div>
     );
@@ -213,23 +187,16 @@ export default function QuizView({ quizId }: { quizId: string }) {
     const total = result.feedback.length;
     const correctCount = result.feedback.filter(f => f.correct).length;
     const pct = Math.round(result.score);
-    const scoreColor = pct >= 70 ? colors.success : pct >= 50 ? colors.warning : colors.error;
+    const scoreColor = pct >= 70 ? 'text-green-400' : pct >= 50 ? 'text-amber-400' : 'text-red-400';
 
     return (
-      <div style={{ maxWidth: 800, margin: '0 auto' }}>
+      <div className="max-w-3xl mx-auto space-y-6">
         {/* Score banner */}
-        <div style={{
-          background: colors.surface,
-          border: `1px solid ${colors.border}`,
-          borderRadius: '12px',
-          padding: '2rem',
-          textAlign: 'center',
-          marginBottom: '2rem',
-        }}>
-          <div style={{ fontSize: '2.5rem', fontWeight: 700, color: scoreColor }}>
+        <div className="bg-zinc-900 rounded-xl p-8 text-center mb-8">
+          <div className={`text-4xl font-bold ${scoreColor}`}>
             {correctCount}/{total} &mdash; {pct}%
           </div>
-          <div style={{ color: colors.textMuted, marginTop: '0.5rem' }}>
+          <div className="text-zinc-500 mt-2">
             Quiz complete
           </div>
         </div>
@@ -238,63 +205,40 @@ export default function QuizView({ quizId }: { quizId: string }) {
         {result.feedback.map((fb, i) => {
           const question = quiz.questions[i];
           return (
-            <div key={i} style={{
-              background: colors.surface,
-              border: `1px solid ${fb.correct ? colors.success : colors.error}`,
-              borderRadius: '12px',
-              padding: '1.5rem',
-              marginBottom: '1rem',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', marginBottom: '1rem' }}>
-                <span style={{
-                  fontSize: '1.25rem',
-                  flexShrink: 0,
-                  color: fb.correct ? colors.success : colors.error,
-                }}>
+            <div key={i} className={`${fb.correct ? 'bg-green-500/5 border-l-2 border-green-500' : 'bg-red-500/5 border-l-2 border-red-500'} rounded-lg p-5 mb-3`}>
+              <div className="flex items-start gap-3 mb-4">
+                <span className={`text-lg font-bold shrink-0 ${fb.correct ? 'text-green-400' : 'text-red-400'}`}>
                   {fb.correct ? '\u2713' : '\u2717'}
                 </span>
-                <div style={{ fontWeight: 600, lineHeight: 1.4 }}>
+                <div className="font-semibold leading-relaxed">
                   Q{i + 1}. {fb.question}
                 </div>
               </div>
 
               {/* Show diagram if diagram question */}
               {question?.type === 'diagram' && question.diagram && (
-                <div style={{ marginBottom: '1rem' }}>
+                <div className="mb-4">
                   <MermaidDiagram code={question.diagram} id={`result-${i}`} />
                 </div>
               )}
 
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: '0.75rem',
-                fontSize: '0.9rem',
-                marginBottom: fb.explanation ? '0.75rem' : 0,
-              }}>
+              <div className={`grid grid-cols-2 gap-3 text-sm ${fb.explanation ? 'mb-3' : ''}`}>
                 <div>
-                  <span style={{ color: colors.textMuted }}>Your answer: </span>
-                  <span style={{ color: fb.correct ? colors.success : colors.error }}>
+                  <span className="text-xs text-zinc-500 uppercase tracking-wide">Your answer: </span>
+                  <span className={fb.correct ? 'text-green-400' : 'text-red-400'}>
                     {fb.your_answer || '(empty)'}
                   </span>
                 </div>
                 <div>
-                  <span style={{ color: colors.textMuted }}>Correct answer: </span>
-                  <span style={{ color: colors.success }}>
+                  <span className="text-xs text-zinc-500 uppercase tracking-wide">Correct answer: </span>
+                  <span className="text-green-400">
                     {fb.correct_answer}
                   </span>
                 </div>
               </div>
 
               {fb.explanation && (
-                <div style={{
-                  fontSize: '0.85rem',
-                  color: colors.textMuted,
-                  background: colors.bg,
-                  borderRadius: '8px',
-                  padding: '0.75rem 1rem',
-                  lineHeight: 1.5,
-                }}>
+                <div className="bg-zinc-950 rounded-lg p-3 mt-3 text-sm text-zinc-400 leading-relaxed">
                   {fb.explanation}
                 </div>
               )}
@@ -303,18 +247,10 @@ export default function QuizView({ quizId }: { quizId: string }) {
         })}
 
         {/* Back to course link */}
-        <div style={{ textAlign: 'center', marginTop: '2rem' }}>
+        <div className="text-center mt-8">
           <a
             href={`/course/${quiz.course_id}`}
-            style={{
-              display: 'inline-block',
-              padding: '0.75rem 2rem',
-              background: colors.accent,
-              color: '#fff',
-              borderRadius: '8px',
-              fontWeight: 600,
-              textDecoration: 'none',
-            }}
+            className="inline-flex items-center gap-2 bg-indigo-500 hover:bg-indigo-400 text-white rounded-lg px-6 py-2.5 font-medium no-underline hover:no-underline transition-colors"
           >
             Back to Course
           </a>
@@ -326,49 +262,40 @@ export default function QuizView({ quizId }: { quizId: string }) {
   /* ── Quiz state ────────────────────────────────────────────────────── */
 
   return (
-    <div style={{ maxWidth: 800, margin: '0 auto' }}>
-      <h1 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '2rem' }}>
+    <div className="max-w-3xl mx-auto space-y-6">
+      <h1 className="text-2xl font-semibold tracking-tight text-zinc-50">
         Quiz
       </h1>
 
       {quiz.questions.map((q, i) => (
-        <div key={i} style={{
-          background: colors.surface,
-          border: `1px solid ${colors.border}`,
-          borderRadius: '12px',
-          padding: '1.5rem',
-          marginBottom: '1.25rem',
-        }}>
-          <div style={{ fontWeight: 600, marginBottom: '1rem', lineHeight: 1.4 }}>
-            Q{i + 1}. {q.question}
+        <div key={i} className="bg-zinc-900 rounded-xl p-6 space-y-4">
+          <div className="text-xs text-zinc-500 uppercase tracking-wide font-medium">
+            Question {i + 1}
+          </div>
+          <div className="text-lg font-medium text-zinc-100">
+            {q.question}
           </div>
 
           {/* Diagram rendering */}
           {q.type === 'diagram' && q.diagram && (
-            <div style={{ marginBottom: '1rem' }}>
+            <div>
               <MermaidDiagram code={q.diagram} id={`q-${i}`} />
             </div>
           )}
 
           {/* MCQ options */}
           {q.type === 'mcq' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div className="flex flex-col gap-2">
               {q.options.map((opt, j) => {
                 const selected = answers[i] === opt;
                 return (
                   <label
                     key={j}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.75rem',
-                      padding: '0.75rem 1rem',
-                      background: colors.bg,
-                      border: `2px solid ${selected ? colors.accent : colors.border}`,
-                      borderRadius: '8px',
-                      cursor: 'pointer',
-                      transition: 'border-color 0.15s',
-                    }}
+                    className={`flex items-center gap-3 border rounded-lg px-4 py-3 cursor-pointer transition-colors ${
+                      selected
+                        ? 'border-indigo-500 bg-indigo-500/10'
+                        : 'border-zinc-800 hover:border-zinc-600'
+                    }`}
                   >
                     <input
                       type="radio"
@@ -376,21 +303,15 @@ export default function QuizView({ quizId }: { quizId: string }) {
                       value={opt}
                       checked={selected}
                       onChange={() => setAnswer(i, opt)}
-                      style={{ display: 'none' }}
+                      className="hidden"
                     />
-                    <span style={{
-                      width: 20,
-                      height: 20,
-                      borderRadius: '50%',
-                      border: `2px solid ${selected ? colors.accent : colors.border}`,
-                      background: selected ? colors.accent : 'transparent',
-                      flexShrink: 0,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}>
+                    <span className={
+                      selected
+                        ? 'w-5 h-5 rounded-full border-2 border-indigo-500 bg-indigo-500 shrink-0 flex items-center justify-center'
+                        : 'w-5 h-5 rounded-full border-2 border-zinc-600 shrink-0'
+                    }>
                       {selected && (
-                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#fff' }} />
+                        <span className="w-2 h-2 rounded-full bg-white" />
                       )}
                     </span>
                     <span>{opt}</span>
@@ -407,46 +328,25 @@ export default function QuizView({ quizId }: { quizId: string }) {
               placeholder="Type your answer..."
               value={answers[i]}
               onChange={e => setAnswer(i, e.target.value)}
-              style={{
-                width: '100%',
-                padding: '0.75rem 1rem',
-                background: colors.bg,
-                border: `1px solid ${colors.border}`,
-                borderRadius: '8px',
-                color: colors.text,
-                fontSize: '0.95rem',
-                outline: 'none',
-              }}
-              onFocus={e => e.target.style.borderColor = colors.accent}
-              onBlur={e => e.target.style.borderColor = colors.border}
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-3 text-zinc-200 text-sm focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 focus:outline-none transition-colors placeholder-zinc-600"
             />
           )}
         </div>
       ))}
 
       {/* Submit button */}
-      <div style={{ textAlign: 'center', marginTop: '2rem', marginBottom: '2rem' }}>
+      <div className="text-center mt-8 mb-8">
         <button
           onClick={handleSubmit}
           disabled={!allAnswered || submitting}
-          style={{
-            padding: '0.75rem 2.5rem',
-            background: allAnswered && !submitting ? colors.accent : colors.border,
-            color: allAnswered && !submitting ? '#fff' : colors.textMuted,
-            border: 'none',
-            borderRadius: '8px',
-            fontSize: '1rem',
-            fontWeight: 600,
-            cursor: allAnswered && !submitting ? 'pointer' : 'not-allowed',
-            transition: 'background 0.15s',
-          }}
+          className="block mx-auto bg-indigo-500 hover:bg-indigo-400 disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white rounded-lg px-8 py-3 text-sm font-medium transition-colors border-none"
         >
           {submitting ? 'Submitting...' : 'Submit Quiz'}
         </button>
       </div>
 
       {error && (
-        <div style={{ textAlign: 'center', color: colors.error, marginTop: '1rem' }}>
+        <div className="text-center text-red-400 mt-4">
           {error}
         </div>
       )}
