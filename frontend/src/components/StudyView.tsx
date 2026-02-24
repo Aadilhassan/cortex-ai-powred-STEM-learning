@@ -314,7 +314,7 @@ export default function StudyView({ subtopicId }: StudyViewProps) {
       {/* Main content area */}
       <div className="flex flex-1 min-h-0 overflow-hidden relative">
         {/* Chat panel */}
-        <div className={`${isDiagramOpen ? 'w-[60%]' : 'w-full'} flex flex-col min-h-0 overflow-hidden transition-all duration-300`}>
+        <div className={`${isDiagramOpen ? 'w-[60%]' : 'w-full'} relative min-h-0 overflow-hidden transition-all duration-300`}>
           <ChatPanel
             messages={messages}
             streamingText={streamingText}

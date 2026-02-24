@@ -26,12 +26,13 @@ interface ChatPanelProps {
 }
 
 export default function ChatPanel({ messages, streamingText, streamingSources, isThinking }: ChatPanelProps) {
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const [viewerMaterial, setViewerMaterial] = useState<{ filename: string; content: string } | null>(null);
   const [viewerLoading, setViewerLoading] = useState(false);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [messages, streamingText, isThinking]);
 
   function renderMarkdown(text: string): string {
@@ -61,59 +62,61 @@ export default function ChatPanel({ messages, streamingText, streamingSources, i
   }, []);
 
   return (
-    <div className="flex flex-col h-full min-h-0 overflow-hidden relative">
-      <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-3">
-        {messages.map((msg, i) => (
-          <div key={i}>
-            <div
-              className={
-                msg.role === 'user'
-                  ? 'self-end max-w-[75%] bg-indigo-600 text-white rounded-2xl rounded-br-md px-4 py-2.5 text-sm leading-relaxed break-words ml-auto'
-                  : 'self-start max-w-[75%] bg-zinc-900 text-zinc-200 border border-zinc-800 rounded-2xl rounded-bl-md px-4 py-2.5 text-sm leading-relaxed break-words'
-              }
-            >
-              {msg.role === 'user' ? (
-                <span>{msg.content}</span>
-              ) : (
-                <div
-                  className="markdown-content"
-                  dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
-                />
+    <div className="absolute inset-0 flex flex-col overflow-hidden">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
+        <div className="space-y-3">
+          {messages.map((msg, i) => (
+            <div key={i}>
+              <div
+                className={
+                  msg.role === 'user'
+                    ? 'self-end max-w-[75%] bg-indigo-600 text-white rounded-2xl rounded-br-md px-4 py-2.5 text-sm leading-relaxed break-words ml-auto'
+                    : 'self-start max-w-[75%] bg-zinc-900 text-zinc-200 border border-zinc-800 rounded-2xl rounded-bl-md px-4 py-2.5 text-sm leading-relaxed break-words'
+                }
+              >
+                {msg.role === 'user' ? (
+                  <span>{msg.content}</span>
+                ) : (
+                  <div
+                    className="markdown-content"
+                    dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
+                  />
+                )}
+              </div>
+              {/* Source references for assistant messages */}
+              {msg.role === 'assistant' && msg.sources && msg.sources.length > 0 && (
+                <SourceBadges sources={msg.sources} onSourceClick={handleSourceClick} />
               )}
             </div>
-            {/* Source references for assistant messages */}
-            {msg.role === 'assistant' && msg.sources && msg.sources.length > 0 && (
-              <SourceBadges sources={msg.sources} onSourceClick={handleSourceClick} />
-            )}
-          </div>
-        ))}
+          ))}
 
-        {streamingText && (
-          <div>
+          {streamingText && (
+            <div>
+              <div className="self-start max-w-[75%] bg-zinc-900 text-zinc-200 border border-zinc-800 rounded-2xl rounded-bl-md px-4 py-2.5 text-sm leading-relaxed break-words">
+                <div
+                  className="markdown-content"
+                  dangerouslySetInnerHTML={{ __html: renderMarkdown(streamingText) }}
+                />
+                <span className="text-indigo-400 font-bold ml-0.5 animate-blink">|</span>
+              </div>
+              {streamingSources.length > 0 && (
+                <SourceBadges sources={streamingSources} onSourceClick={handleSourceClick} />
+              )}
+            </div>
+          )}
+
+          {isThinking && (
             <div className="self-start max-w-[75%] bg-zinc-900 text-zinc-200 border border-zinc-800 rounded-2xl rounded-bl-md px-4 py-2.5 text-sm leading-relaxed break-words">
-              <div
-                className="markdown-content"
-                dangerouslySetInnerHTML={{ __html: renderMarkdown(streamingText) }}
-              />
-              <span className="text-indigo-400 font-bold ml-0.5 animate-blink">|</span>
+              <div className="flex gap-1.5 py-1 items-center">
+                <span className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce-dot" style={{ animationDelay: '0s' }} />
+                <span className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce-dot" style={{ animationDelay: '0.15s' }} />
+                <span className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce-dot" style={{ animationDelay: '0.3s' }} />
+              </div>
             </div>
-            {streamingSources.length > 0 && (
-              <SourceBadges sources={streamingSources} onSourceClick={handleSourceClick} />
-            )}
-          </div>
-        )}
+          )}
 
-        {isThinking && (
-          <div className="self-start max-w-[75%] bg-zinc-900 text-zinc-200 border border-zinc-800 rounded-2xl rounded-bl-md px-4 py-2.5 text-sm leading-relaxed break-words">
-            <div className="flex gap-1.5 py-1 items-center">
-              <span className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce-dot" style={{ animationDelay: '0s' }} />
-              <span className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce-dot" style={{ animationDelay: '0.15s' }} />
-              <span className="w-2 h-2 rounded-full bg-indigo-400 animate-bounce-dot" style={{ animationDelay: '0.3s' }} />
-            </div>
-          </div>
-        )}
-
-        <div ref={bottomRef} />
+          <div />
+        </div>
       </div>
 
       {/* Material viewer slide-out panel */}
