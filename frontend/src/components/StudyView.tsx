@@ -200,29 +200,28 @@ export default function StudyView({ subtopicId }: StudyViewProps) {
   };
 
   return (
-    <div style={styles.root}>
+    <div className="flex flex-col h-[calc(100vh-56px)]">
       {/* Header */}
-      <div style={styles.header}>
-        <div style={styles.headerLeft}>
-          <a href="/" style={styles.backLink}>
+      <div className="flex items-center justify-between px-4 py-3 bg-zinc-900/80 backdrop-blur-sm border-b border-zinc-800/50 shrink-0">
+        <div className="flex items-center gap-3">
+          <a href="/" className="flex items-center gap-1 text-sm text-indigo-400 hover:text-indigo-300 no-underline hover:no-underline transition-colors">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="15 18 9 12 15 6" />
             </svg>
             Back
           </a>
-          <span style={styles.headerDivider}>|</span>
-          <span style={styles.subtopicLabel}>
+          <span className="text-sm text-zinc-500">
             Subtopic: <strong>{subtopicId}</strong>
           </span>
-          <span style={{
-            ...styles.connectionDot,
-            background: isConnected ? '#4ade80' : '#f87171',
-          }} title={isConnected ? 'Connected' : 'Disconnected'} />
+          <span
+            className={`w-2 h-2 rounded-full shrink-0 ${isConnected ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`}
+            title={isConnected ? 'Connected' : 'Disconnected'}
+          />
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+        <div className="flex gap-2 items-center">
           <button
             onClick={handleClearChat}
-            style={styles.clearChatBtn}
+            className="p-2 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1.5 text-sm border border-zinc-800"
             title="Clear chat history"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -233,7 +232,7 @@ export default function StudyView({ subtopicId }: StudyViewProps) {
           </button>
           <button
             onClick={handleGenerateDiagram}
-            style={styles.clearChatBtn}
+            className="p-2 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1.5 text-sm border border-zinc-800"
             title="Generate a diagram on any topic"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -245,7 +244,7 @@ export default function StudyView({ subtopicId }: StudyViewProps) {
           </button>
           <button
             onClick={() => setIsDiagramOpen(!isDiagramOpen)}
-            style={styles.diagramToggleBtn}
+            className="p-2 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1.5 text-sm border border-zinc-800"
           >
             Diagrams {isDiagramOpen ? '\u25B6' : '\u25C0'}
           </button>
@@ -253,12 +252,9 @@ export default function StudyView({ subtopicId }: StudyViewProps) {
       </div>
 
       {/* Main content area */}
-      <div style={styles.mainContent}>
+      <div className="flex flex-1 overflow-hidden relative">
         {/* Chat panel */}
-        <div style={{
-          ...styles.chatArea,
-          width: isDiagramOpen ? '60%' : '100%',
-        }}>
+        <div className={`${isDiagramOpen ? 'w-[60%]' : 'w-full'} flex flex-col overflow-hidden transition-all duration-300`}>
           <ChatPanel
             messages={messages}
             streamingText={streamingText}
@@ -267,12 +263,10 @@ export default function StudyView({ subtopicId }: StudyViewProps) {
         </div>
 
         {/* Diagram panel */}
-        <div style={{
-          ...styles.diagramArea,
-          width: isDiagramOpen ? '40%' : '0',
-          display: isDiagramOpen ? 'block' : 'none',
-          position: 'relative' as const,
-        }}>
+        <div className={isDiagramOpen
+          ? 'w-[40%] shrink-0 transition-all duration-300 relative'
+          : 'w-0 shrink-0 overflow-hidden transition-all duration-300'
+        }>
           <DiagramPanel
             diagrams={diagrams}
             isOpen={isDiagramOpen}
@@ -284,19 +278,19 @@ export default function StudyView({ subtopicId }: StudyViewProps) {
         {!isDiagramOpen && diagrams.length > 0 && (
           <button
             onClick={() => setIsDiagramOpen(true)}
-            style={styles.collapsedPanelHint}
+            className="absolute right-0 top-1/2 -translate-y-1/2 bg-zinc-900 border border-zinc-800 border-r-0 text-indigo-400 px-1.5 py-3 rounded-l-lg flex flex-col items-center gap-1 cursor-pointer transition-colors z-10 hover:text-indigo-300"
             title="Open diagram panel"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polyline points="15 18 9 12 15 6" />
             </svg>
-            <span style={{ fontSize: '0.75rem' }}>{diagrams.length}</span>
+            <span className="text-xs">{diagrams.length}</span>
           </button>
         )}
       </div>
 
       {/* Input bar */}
-      <form onSubmit={handleSubmit} style={styles.inputBar}>
+      <form onSubmit={handleSubmit} className="flex items-center gap-3 px-4 py-3 bg-zinc-900 border-t border-zinc-800/50 shrink-0">
         <VoiceInput
           onAudioData={handleAudioData}
           isListening={isListening}
@@ -308,7 +302,7 @@ export default function StudyView({ subtopicId }: StudyViewProps) {
           onChange={e => setInputText(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Type a message..."
-          style={styles.textInput}
+          className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-zinc-200 text-sm resize-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 focus:outline-none transition-colors font-sans leading-normal min-h-[42px] max-h-[120px]"
           rows={1}
           disabled={!isConnected}
         />
@@ -316,10 +310,7 @@ export default function StudyView({ subtopicId }: StudyViewProps) {
         <button
           type="submit"
           disabled={!inputText.trim() || !isConnected}
-          style={{
-            ...styles.sendButton,
-            opacity: (!inputText.trim() || !isConnected) ? 0.4 : 1,
-          }}
+          className="bg-indigo-500 hover:bg-indigo-400 disabled:opacity-30 text-white rounded-full w-10 h-10 flex items-center justify-center shrink-0 transition-all border-none"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="22" y1="2" x2="11" y2="13" />
@@ -335,144 +326,3 @@ export default function StudyView({ subtopicId }: StudyViewProps) {
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  root: {
-    display: 'flex',
-    flexDirection: 'column',
-    height: 'calc(100vh - 60px)',
-    margin: '-2rem',
-    background: '#0f0f13',
-  },
-  header: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '0.75rem 1.25rem',
-    borderBottom: '1px solid #2a2a3d',
-    background: '#1a1a24',
-    flexShrink: 0,
-  },
-  headerLeft: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.75rem',
-  },
-  backLink: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '4px',
-    color: '#7c8aff',
-    textDecoration: 'none',
-    fontSize: '0.9rem',
-    fontWeight: 500,
-  },
-  headerDivider: {
-    color: '#2a2a3d',
-  },
-  subtopicLabel: {
-    fontSize: '0.9rem',
-    color: '#8888a0',
-  },
-  connectionDot: {
-    width: '8px',
-    height: '8px',
-    borderRadius: '50%',
-    flexShrink: 0,
-  },
-  clearChatBtn: {
-    background: 'none',
-    border: '1px solid #2a2a3d',
-    color: '#8888a0',
-    padding: '0.4rem 0.75rem',
-    borderRadius: '6px',
-    fontSize: '0.85rem',
-    cursor: 'pointer',
-    transition: 'all 0.2s',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '4px',
-  },
-  diagramToggleBtn: {
-    background: 'none',
-    border: '1px solid #2a2a3d',
-    color: '#8888a0',
-    padding: '0.4rem 0.75rem',
-    borderRadius: '6px',
-    fontSize: '0.85rem',
-    cursor: 'pointer',
-    transition: 'all 0.2s',
-  },
-  mainContent: {
-    flex: 1,
-    display: 'flex',
-    overflow: 'hidden',
-    position: 'relative' as const,
-  },
-  chatArea: {
-    transition: 'width 0.3s ease',
-    overflow: 'hidden',
-    display: 'flex',
-    flexDirection: 'column',
-  },
-  diagramArea: {
-    transition: 'width 0.3s ease',
-    overflow: 'hidden',
-    flexShrink: 0,
-  },
-  collapsedPanelHint: {
-    position: 'absolute',
-    right: 0,
-    top: '50%',
-    transform: 'translateY(-50%)',
-    background: '#1a1a24',
-    border: '1px solid #2a2a3d',
-    borderRight: 'none',
-    color: '#7c8aff',
-    padding: '8px 6px',
-    borderRadius: '8px 0 0 8px',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: '4px',
-    cursor: 'pointer',
-    zIndex: 10,
-  },
-  inputBar: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.75rem',
-    padding: '0.75rem 1.25rem',
-    borderTop: '1px solid #2a2a3d',
-    background: '#1a1a24',
-    flexShrink: 0,
-  },
-  textInput: {
-    flex: 1,
-    background: '#0f0f13',
-    border: '1px solid #2a2a3d',
-    borderRadius: '8px',
-    color: '#e0e0e0',
-    padding: '0.65rem 1rem',
-    fontSize: '0.95rem',
-    resize: 'none',
-    outline: 'none',
-    fontFamily: 'inherit',
-    lineHeight: 1.5,
-    minHeight: '42px',
-    maxHeight: '120px',
-  },
-  sendButton: {
-    background: '#7c8aff',
-    border: 'none',
-    color: '#fff',
-    borderRadius: '50%',
-    width: '42px',
-    height: '42px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    transition: 'opacity 0.2s',
-    flexShrink: 0,
-  },
-};
