@@ -1,22 +1,9 @@
-import subprocess
-import sys
-
 import pytest
+import pytest_asyncio
 
-# zvec's C++ extension requires specific CPU SIMD instructions (e.g. AVX2).
-# Importing it can cause a fatal SIGILL crash, so we probe in a subprocess.
-_probe = subprocess.run(
-    [sys.executable, "-c", "import zvec"],
-    capture_output=True,
-    timeout=10,
-)
-_zvec_available = _probe.returncode == 0
-_zvec_reason = "zvec C++ extension unavailable (SIGILL or missing CPU features)"
-
-requires_zvec = pytest.mark.skipif(not _zvec_available, reason=_zvec_reason)
-
-# Embedder only needs sentence-transformers (CPU-safe), import unconditionally.
+from app.database import Database
 from app.services.embedder import Embedder
+from app.services.vector_store import VectorStore, _to_blob
 
 
 @pytest.fixture(scope="module")
@@ -25,21 +12,33 @@ def embedder():
     return Embedder()
 
 
-@pytest.fixture()
-def store(tmp_path):
-    """Create a fresh VectorStore in a temporary directory."""
-    from app.services.vector_store import VectorStore
+@pytest_asyncio.fixture()
+async def db(tmp_path):
+    """Create a fresh in-memory database for each test."""
+    database = Database(str(tmp_path / "test.db"))
+    await database.initialize()
+    yield database
+    await database.close()
 
-    return VectorStore(path=tmp_path / "test_vectors", dimension=384)
+
+@pytest_asyncio.fixture()
+async def store(db):
+    """Create a VectorStore backed by the test database."""
+    return VectorStore(db)
 
 
 # ── Tests ────────────────────────────────────────────────────────────────
 
 
-@requires_zvec
-def test_add_and_search(store, embedder):
+@pytest.mark.asyncio
+async def test_add_and_search(db, store, embedder):
     """Add 3 chunks with different content, search for related content,
     verify the most relevant chunk is returned first."""
+    # Create course -> section -> subtopic
+    course_id = await db.create_course("Test Course")
+    section_id = await db.create_section(course_id, "Section 1")
+    subtopic_id = await db.create_subtopic(section_id, "Biology Basics")
+
     texts = [
         "Photosynthesis converts sunlight into chemical energy in plants",
         "The French Revolution began in 1789 with the storming of the Bastille",
@@ -48,65 +47,51 @@ def test_add_and_search(store, embedder):
     embeddings = embedder.embed_batch(texts)
 
     for idx, (text, emb) in enumerate(zip(texts, embeddings)):
-        store.add(chunk_id=f"chunk-{idx}", embedding=emb, subtopic_id="bio")
+        await db.create_chunk_with_embedding(
+            subtopic_id, text, _to_blob(emb), idx
+        )
 
     # Search for something related to biology / cells
     query_emb = embedder.embed("cellular energy production")
-    results = store.search(query_emb, topk=3)
+    results = await store.search(query_emb, topk=3, subtopic_id=subtopic_id)
 
     assert len(results) >= 1
-    # The mitochondria chunk (chunk-2) should be the most relevant
-    assert results[0]["id"] == "chunk-2"
-    # Each result has id and score
+    # The mitochondria chunk should be the most relevant
+    assert "Mitochondria" in results[0]["content"]
     for r in results:
         assert "id" in r
+        assert "content" in r
         assert "score" in r
 
 
-@requires_zvec
-def test_search_with_filter(store, embedder):
-    """Add chunks with different subtopic_ids, search with filter,
-    verify only matching subtopic is returned."""
-    items = [
-        {
-            "id": "math-1",
-            "embedding": embedder.embed("Derivatives measure rates of change"),
-            "subtopic_id": "calculus",
-        },
-        {
-            "id": "math-2",
-            "embedding": embedder.embed("Integrals compute areas under curves"),
-            "subtopic_id": "calculus",
-        },
-        {
-            "id": "hist-1",
-            "embedding": embedder.embed("World War II ended in 1945"),
-            "subtopic_id": "history",
-        },
+@pytest.mark.asyncio
+async def test_search_material_chunks(db, store, embedder):
+    """Add material chunks to a course, verify search by course_id works."""
+    course_id = await db.create_course("Test Course")
+    material_id = await db.create_material(course_id, "notes.txt", "Some notes")
+
+    texts = [
+        "Derivatives measure rates of change",
+        "Integrals compute areas under curves",
     ]
-    store.add_batch(items)
+    embeddings = embedder.embed_batch(texts)
 
-    # Search for calculus-related content but filter to history
-    query_emb = embedder.embed("mathematical analysis")
-    results = store.search(query_emb, topk=5, subtopic_id="history")
+    for i, (text, emb) in enumerate(zip(texts, embeddings)):
+        await db.create_material_chunk(
+            material_id, course_id, text, _to_blob(emb), i
+        )
 
-    # Only the history chunk should come back
-    assert len(results) == 1
-    assert results[0]["id"] == "hist-1"
+    query_emb = embedder.embed("mathematical analysis of change")
+    results = await store.search(query_emb, topk=2, course_id=course_id)
+
+    assert len(results) == 2
+    # Derivatives should be most relevant to "rates of change"
+    assert "Derivatives" in results[0]["content"]
 
 
-@requires_zvec
-def test_delete(store, embedder):
-    """Add a chunk, delete it, verify search returns empty."""
-    emb = embedder.embed("Quantum entanglement links distant particles")
-    store.add(chunk_id="quantum-1", embedding=emb, subtopic_id="physics")
-
-    # Confirm it is searchable
-    results = store.search(emb, topk=1)
-    assert len(results) == 1
-    assert results[0]["id"] == "quantum-1"
-
-    # Delete and verify it's gone
-    store.delete("quantum-1")
-    results = store.search(emb, topk=1)
-    assert len(results) == 0
+@pytest.mark.asyncio
+async def test_empty_search(db, store, embedder):
+    """Search with no matching chunks returns empty list."""
+    query_emb = embedder.embed("quantum physics")
+    results = await store.search(query_emb, topk=5, subtopic_id="nonexistent")
+    assert results == []

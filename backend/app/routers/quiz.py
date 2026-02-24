@@ -13,10 +13,11 @@ router = APIRouter(tags=["quiz"])
 
 class QuizGenerateRequest(BaseModel):
     course_id: str
-    scope: str  # "course", "topic", or "subtopic"
+    scope: str  # "course", "topic", "subtopic", or "exam"
     section_id: str | None = None
     subtopic_id: str | None = None
-    num_questions: int = 5
+    num_questions: int | None = None
+    exam_type: str | None = None  # "midterm" or "comprehensive"
 
 
 class QuizSubmitRequest(BaseModel):
@@ -42,13 +43,22 @@ async def generate_quiz(body: QuizGenerateRequest, request: Request):
     """Generate a quiz for a course, section, or subtopic."""
     quiz_gen = _get_quiz_generator(request)
 
-    quiz_id = await quiz_gen.generate(
-        course_id=body.course_id,
-        scope=body.scope,
-        num_questions=body.num_questions,
-        section_id=body.section_id,
-        subtopic_id=body.subtopic_id,
-    )
+    try:
+        # For exams, let the generator use its own defaults unless explicitly overridden
+        num_q = body.num_questions if body.num_questions is not None else 5
+        quiz_id = await quiz_gen.generate(
+            course_id=body.course_id,
+            scope=body.scope,
+            num_questions=num_q,
+            section_id=body.section_id,
+            subtopic_id=body.subtopic_id,
+            exam_type=body.exam_type,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        print(f"[quiz] Generation failed: {e}")
+        raise HTTPException(status_code=500, detail="Quiz generation failed. Please try again.")
 
     db = _get_db(request)
     quiz = await db.get_quiz(quiz_id)

@@ -1,11 +1,18 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { StudySocket } from '../lib/websocket';
-import { generateDiagram } from '../lib/api';
+import { generateDiagram, getSubtopicInfo } from '../lib/api';
 import { AudioPlayer } from './AudioPlayer';
-import ChatPanel, { type Message } from './ChatPanel';
+import ChatPanel, { type Message, type Source } from './ChatPanel';
 import DiagramPanel from './DiagramPanel';
-import VoiceInput from './VoiceInput';
-import AudioController from './AudioController';
+import LiveModeButton from './LiveModeButton';
+
+interface SubtopicInfo {
+  title: string;
+  summary: string;
+  section_title: string;
+  learning_objectives: string[];
+  materials: { id: string; filename: string }[];
+}
 
 interface StudyViewProps {
   subtopicId: string;
@@ -14,17 +21,19 @@ interface StudyViewProps {
 export default function StudyView({ subtopicId }: StudyViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [streamingText, setStreamingText] = useState('');
+  const [streamingSources, setStreamingSources] = useState<Source[]>([]);
   const [diagrams, setDiagrams] = useState<string[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
-  const [isTTSEnabled, setIsTTSEnabled] = useState(false);
+  const [isLiveMode, setIsLiveMode] = useState(false);
   const [isDiagramOpen, setIsDiagramOpen] = useState(true);
-  const [isListening, setIsListening] = useState(false);
   const [inputText, setInputText] = useState('');
+  const [info, setInfo] = useState<SubtopicInfo | null>(null);
 
   const socketRef = useRef<StudySocket | null>(null);
   const audioPlayerRef = useRef<AudioPlayer | null>(null);
   const streamingTextRef = useRef('');
+  const pendingSourcesRef = useRef<Source[]>([]);
 
   // Extract mermaid blocks from text and return [cleanedText, mermaidCodes[]]
   const extractMermaid = useCallback((text: string): [string, string[]] => {
@@ -37,7 +46,7 @@ export default function StudyView({ subtopicId }: StudyViewProps) {
   }, []);
 
   // Handle WebSocket messages
-  const handleMessage = useCallback((msg: { type: string; content?: string; data?: string; mermaid?: string }) => {
+  const handleMessage = useCallback((msg: { type: string; content?: string; data?: string; mermaid?: string; sources?: Source[] }) => {
     switch (msg.type) {
       case 'text_delta': {
         setIsThinking(false);
@@ -61,6 +70,12 @@ export default function StudyView({ subtopicId }: StudyViewProps) {
         }
         break;
       }
+      case 'sources': {
+        const sources = msg.sources ?? [];
+        pendingSourcesRef.current = sources;
+        setStreamingSources(sources);
+        break;
+      }
       case 'transcript': {
         // STT result from backend — show as user message
         const text = msg.content ?? '';
@@ -71,6 +86,8 @@ export default function StudyView({ subtopicId }: StudyViewProps) {
           setIsThinking(true);
           streamingTextRef.current = '';
           setStreamingText('');
+          pendingSourcesRef.current = [];
+          setStreamingSources([]);
         }
         break;
       }
@@ -83,17 +100,21 @@ export default function StudyView({ subtopicId }: StudyViewProps) {
             setDiagrams(prev => [...prev, ...mermaidBlocks]);
             setIsDiagramOpen(true);
           }
-          setMessages(prev => [...prev, { role: 'assistant', content: fullText }]);
+          setMessages(prev => [...prev, { role: 'assistant', content: fullText, sources: pendingSourcesRef.current }]);
         }
         streamingTextRef.current = '';
         setStreamingText('');
+        pendingSourcesRef.current = [];
+        setStreamingSources([]);
         break;
       }
     }
   }, [extractMermaid]);
 
-  // Load chat history from DB on mount
+  // Load subtopic info and chat history on mount
   useEffect(() => {
+    getSubtopicInfo(subtopicId).then(setInfo).catch(() => {});
+
     fetch(`/api/chat/${subtopicId}/messages`)
       .then(r => r.ok ? r.json() : [])
       .then((msgs: Message[]) => {
@@ -124,12 +145,15 @@ export default function StudyView({ subtopicId }: StudyViewProps) {
     };
   }, [subtopicId, handleMessage]);
 
-  // Sync TTS enabled state with AudioPlayer
+  // Sync TTS enabled state with AudioPlayer (enabled in live mode)
   useEffect(() => {
     if (audioPlayerRef.current) {
-      audioPlayerRef.current.enabled = isTTSEnabled;
+      audioPlayerRef.current.enabled = isLiveMode;
     }
-  }, [isTTSEnabled]);
+  }, [isLiveMode]);
+
+  const isLiveModeRef = useRef(false);
+  isLiveModeRef.current = isLiveMode;
 
   // Send a message — interrupts any playing audio
   const sendMessage = useCallback((text: string) => {
@@ -143,7 +167,9 @@ export default function StudyView({ subtopicId }: StudyViewProps) {
     setIsThinking(true);
     streamingTextRef.current = '';
     setStreamingText('');
-    socketRef.current.send(trimmed);
+    pendingSourcesRef.current = [];
+    setStreamingSources([]);
+    socketRef.current.send(trimmed, isLiveModeRef.current ? 'live' : 'chat');
     setInputText('');
   }, []);
 
@@ -157,16 +183,14 @@ export default function StudyView({ subtopicId }: StudyViewProps) {
     if (!socketRef.current) return;
     // Interrupt AI audio when user speaks
     audioPlayerRef.current?.interrupt();
-    socketRef.current.sendRaw({ type: 'audio', data: base64 });
+    socketRef.current.sendRaw({ type: 'audio', data: base64, mode: 'live' });
   }, []);
 
-  const handleVoiceToggle = useCallback(() => {
-    const newListening = !isListening;
-    if (newListening) {
-      audioPlayerRef.current?.interrupt();
-    }
-    setIsListening(newListening);
-  }, [isListening]);
+  const handleLiveModeToggle = useCallback(() => {
+    const newLive = !isLiveMode;
+    if (newLive) audioPlayerRef.current?.interrupt();
+    setIsLiveMode(newLive);
+  }, [isLiveMode]);
 
   const handleClearChat = useCallback(async () => {
     try {
@@ -202,62 +226,99 @@ export default function StudyView({ subtopicId }: StudyViewProps) {
   return (
     <div className="flex flex-col h-[calc(100vh-56px)]">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-zinc-900/80 backdrop-blur-sm border-b border-zinc-800/50 shrink-0">
-        <div className="flex items-center gap-3">
-          <a href="/" className="flex items-center gap-1 text-sm text-indigo-400 hover:text-indigo-300 no-underline hover:no-underline transition-colors">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
-            Back
-          </a>
-          <span className="text-sm text-zinc-500">
-            Subtopic: <strong>{subtopicId}</strong>
-          </span>
-          <span
-            className={`w-2 h-2 rounded-full shrink-0 ${isConnected ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`}
-            title={isConnected ? 'Connected' : 'Disconnected'}
-          />
+      <div className="px-4 py-3 bg-zinc-900/80 backdrop-blur-sm border-b border-zinc-800/50 shrink-0">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <a href="/" className="flex items-center gap-1 text-sm text-indigo-400 hover:text-indigo-300 no-underline hover:no-underline transition-colors">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+              Back
+            </a>
+            {info ? (
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-xs text-zinc-600">{info.section_title}</span>
+                <svg className="w-3 h-3 text-zinc-700 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+                <span className="text-sm text-zinc-200 font-medium truncate">{info.title}</span>
+              </div>
+            ) : (
+              <span className="text-sm text-zinc-500">Loading...</span>
+            )}
+            <span
+              className={`w-2 h-2 rounded-full shrink-0 ${isConnected ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`}
+              title={isConnected ? 'Connected' : 'Disconnected'}
+            />
+          </div>
+          <div className="flex gap-2 items-center">
+            <button
+              onClick={handleClearChat}
+              className="p-2 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1.5 text-sm border border-zinc-800"
+              title="Clear chat history"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              </svg>
+              Clear
+            </button>
+            <button
+              onClick={handleGenerateDiagram}
+              className="p-2 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1.5 text-sm border border-zinc-800"
+              title="Generate a diagram on any topic"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <path d="M12 8v8" />
+                <path d="M8 12h8" />
+              </svg>
+              Diagram
+            </button>
+            <button
+              onClick={() => setIsDiagramOpen(!isDiagramOpen)}
+              className="p-2 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1.5 text-sm border border-zinc-800"
+            >
+              Diagrams {isDiagramOpen ? '\u25B6' : '\u25C0'}
+            </button>
+          </div>
         </div>
-        <div className="flex gap-2 items-center">
-          <button
-            onClick={handleClearChat}
-            className="p-2 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1.5 text-sm border border-zinc-800"
-            title="Clear chat history"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="3 6 5 6 21 6" />
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-            </svg>
-            Clear
-          </button>
-          <button
-            onClick={handleGenerateDiagram}
-            className="p-2 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1.5 text-sm border border-zinc-800"
-            title="Generate a diagram on any topic"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="2" />
-              <path d="M12 8v8" />
-              <path d="M8 12h8" />
-            </svg>
-            Diagram
-          </button>
-          <button
-            onClick={() => setIsDiagramOpen(!isDiagramOpen)}
-            className="p-2 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1.5 text-sm border border-zinc-800"
-          >
-            Diagrams {isDiagramOpen ? '\u25B6' : '\u25C0'}
-          </button>
-        </div>
+
+        {/* Subtopic context bar */}
+        {info && (info.learning_objectives.length > 0 || info.materials.length > 0) && (
+          <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-zinc-800/30">
+            {info.learning_objectives.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <svg className="w-3 h-3 text-zinc-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="text-[11px] text-zinc-500 truncate max-w-xs" title={info.learning_objectives.join(' | ')}>
+                  {info.learning_objectives[0]}{info.learning_objectives.length > 1 && ` +${info.learning_objectives.length - 1} more`}
+                </span>
+              </div>
+            )}
+            {info.materials.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <svg className="w-3 h-3 text-zinc-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <span className="text-[11px] text-zinc-500">
+                  {info.materials.map(m => m.filename).join(', ')}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Main content area */}
-      <div className="flex flex-1 overflow-hidden relative">
+      <div className="flex flex-1 min-h-0 overflow-hidden relative">
         {/* Chat panel */}
-        <div className={`${isDiagramOpen ? 'w-[60%]' : 'w-full'} flex flex-col overflow-hidden transition-all duration-300`}>
+        <div className={`${isDiagramOpen ? 'w-[60%]' : 'w-full'} flex flex-col min-h-0 overflow-hidden transition-all duration-300`}>
           <ChatPanel
             messages={messages}
             streamingText={streamingText}
+            streamingSources={streamingSources}
             isThinking={isThinking}
           />
         </div>
@@ -291,10 +352,10 @@ export default function StudyView({ subtopicId }: StudyViewProps) {
 
       {/* Input bar */}
       <form onSubmit={handleSubmit} className="flex items-center gap-3 px-4 py-3 bg-zinc-900 border-t border-zinc-800/50 shrink-0">
-        <VoiceInput
+        <LiveModeButton
+          isLive={isLiveMode}
+          onToggle={handleLiveModeToggle}
           onAudioData={handleAudioData}
-          isListening={isListening}
-          onToggle={handleVoiceToggle}
         />
 
         <textarea
@@ -317,11 +378,6 @@ export default function StudyView({ subtopicId }: StudyViewProps) {
             <polygon points="22 2 15 22 11 13 2 9 22 2" />
           </svg>
         </button>
-
-        <AudioController
-          enabled={isTTSEnabled}
-          onToggle={() => setIsTTSEnabled(!isTTSEnabled)}
-        />
       </form>
     </div>
   );

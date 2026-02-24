@@ -2,6 +2,7 @@ export class AudioPlayer {
   private ctx: AudioContext | null = null;
   private queue: AudioBuffer[] = [];
   private playing = false;
+  private currentSource: AudioBufferSourceNode | null = null;
   enabled = true;
 
   private getContext(): AudioContext {
@@ -31,6 +32,7 @@ export class AudioPlayer {
   private playNext() {
     if (!this.queue.length) {
       this.playing = false;
+      this.currentSource = null;
       return;
     }
     this.playing = true;
@@ -39,13 +41,26 @@ export class AudioPlayer {
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     source.connect(ctx.destination);
-    source.onended = () => this.playNext();
+    source.onended = () => {
+      this.currentSource = null;
+      this.playNext();
+    };
+    this.currentSource = source;
     source.start();
   }
 
-  stop() {
+  /** Interrupt: stop current playback and clear queue */
+  interrupt() {
     this.queue = [];
+    if (this.currentSource) {
+      try { this.currentSource.stop(); } catch { /* already stopped */ }
+      this.currentSource = null;
+    }
     this.playing = false;
+  }
+
+  stop() {
+    this.interrupt();
   }
 
   dispose() {

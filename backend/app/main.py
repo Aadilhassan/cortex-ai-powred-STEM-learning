@@ -1,20 +1,8 @@
 import os
-import subprocess
-import sys
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
-
-def _can_import(module_name: str) -> bool:
-    """Check if a module can be imported without crashing (e.g. SIGILL from zvec)."""
-    result = subprocess.run(
-        [sys.executable, "-c", f"import {module_name}"],
-        capture_output=True,
-        timeout=30,
-    )
-    return result.returncode == 0
 
 
 @asynccontextmanager
@@ -22,61 +10,58 @@ async def lifespan(app: FastAPI):
     from app.config import (
         DATA_DIR,
         DB_PATH,
+        EMBEDDING_MODEL,
+        GROQ_API_KEY,
+        GROQ_BASE_URL,
         OPENROUTER_API_KEY,
         OPENROUTER_BASE_URL,
         PRIMARY_MODEL,
         DIAGRAM_MODEL,
-        GROQ_API_KEY,
-        VECTOR_DIR,
     )
     from app.database import Database
     from app.services.llm_client import LLMClient
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    VECTOR_DIR.mkdir(parents=True, exist_ok=True)
 
     print("[startup] Initializing database...")
     db = Database(str(DB_PATH))
     await db.initialize()
     print("[startup] Database ready")
 
-    primary_llm = LLMClient(api_key=OPENROUTER_API_KEY, model=PRIMARY_MODEL, base_url=OPENROUTER_BASE_URL)
-    print(f"[startup] Primary LLM ready ({PRIMARY_MODEL})")
+    primary_llm = LLMClient(api_key=GROQ_API_KEY, model=PRIMARY_MODEL, base_url=GROQ_BASE_URL)
+    print(f"[startup] Primary LLM ready ({PRIMARY_MODEL} via Groq)")
 
-    diagram_llm = LLMClient(api_key=OPENROUTER_API_KEY, model=DIAGRAM_MODEL, base_url=OPENROUTER_BASE_URL)
+    diagram_llm = LLMClient(api_key=OPENROUTER_API_KEY, model=DIAGRAM_MODEL, base_url=OPENROUTER_BASE_URL, timeout=30.0)
     print(f"[startup] Diagram LLM ready ({DIAGRAM_MODEL})")
 
-    # Embedder
+    # Embedder (OpenRouter API)
     embedder = None
     try:
         from app.services.embedder import Embedder
 
-        embedder = Embedder()
-        print("[startup] Embedder ready")
+        embedder = Embedder(
+            api_key=OPENROUTER_API_KEY,
+            base_url=OPENROUTER_BASE_URL,
+            model=EMBEDDING_MODEL,
+        )
+        print(f"[startup] Embedder ready ({EMBEDDING_MODEL} via OpenRouter)")
     except Exception as e:
         print(f"[startup] Embedder failed: {e}")
 
-    # Vector store — probe in subprocess first (zvec can SIGILL on CPUs without AVX2)
-    vector_store = None
-    if _can_import("zvec"):
-        try:
-            from app.services.vector_store import VectorStore
+    # Vector store (numpy + SQLite — no native extensions)
+    from app.services.vector_store import VectorStore
 
-            vector_store = VectorStore(VECTOR_DIR)
-            print("[startup] Vector store ready")
-        except Exception as e:
-            print(f"[startup] Vector store failed: {e}")
-    else:
-        print("[startup] Vector store skipped (zvec not compatible with this CPU)")
+    vector_store = VectorStore(db)
+    print("[startup] Vector store ready (numpy+SQLite)")
 
-    # TTS (KittenTTS nano - fast, cute neural voices)
+    # TTS (Groq Orpheus)
     tts = None
     if not os.getenv("TESTING"):
         try:
             from app.services.tts_engine import TTSEngine
 
-            tts = TTSEngine(voice="Kiki")
-            print("[startup] TTS ready (KittenTTS nano - Kiki)")
+            tts = TTSEngine(api_key=GROQ_API_KEY, voice="autumn")
+            print("[startup] TTS ready (Groq Orpheus - autumn)")
         except Exception as e:
             print(f"[startup] TTS failed: {e}")
 
@@ -107,7 +92,7 @@ async def lifespan(app: FastAPI):
     app.state.tts = tts
     app.state.stt = stt
     app.state.diagram_service = diagram_service
-    app.state.handout_processor = HandoutProcessor(db, primary_llm, embedder, vector_store)
+    app.state.handout_processor = HandoutProcessor(db, primary_llm, embedder)
     app.state.conversation = ConversationManager(db, primary_llm, embedder, vector_store, diagram_service)
     app.state.quiz_generator = QuizGenerator(db, primary_llm)
 
@@ -117,21 +102,24 @@ async def lifespan(app: FastAPI):
 
     await primary_llm.close()
     await diagram_llm.close()
+    if embedder:
+        await embedder.close()
     await db.close()
 
 
-app = FastAPI(title="Study Pal", lifespan=lifespan)
+app = FastAPI(title="Cortex", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:4321"],
+    allow_origins=["http://localhost:4321", "http://localhost:3000"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-from app.routers import chat, courses, diagrams, progress, quiz
+from app.routers import chat, courses, diagrams, exam, progress, quiz
 
 app.include_router(courses.router, prefix="/api")
 app.include_router(chat.router)
+app.include_router(exam.router)
 app.include_router(quiz.router, prefix="/api")
 app.include_router(diagrams.router, prefix="/api")
 app.include_router(progress.router, prefix="/api")

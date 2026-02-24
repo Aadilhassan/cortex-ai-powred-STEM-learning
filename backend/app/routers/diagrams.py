@@ -39,10 +39,12 @@ async def generate_diagram(body: DiagramRequest, request: Request):
             diagram_type=body.diagram_type,
         )
     except Exception as e:
+        import traceback
         print(f"[diagrams] Generation failed: {e}")
+        traceback.print_exc()
         raise HTTPException(
             status_code=500,
-            detail="Diagram generation failed. Please try again.",
+            detail=f"Diagram generation failed: {type(e).__name__}: {e}",
         )
 
     return {"mermaid": mermaid_code}

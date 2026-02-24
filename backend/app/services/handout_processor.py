@@ -1,6 +1,9 @@
-"""Handout processor: PDF extraction, LLM parsing, chunking, and vectorization."""
+"""Handout processor: PDF/PPTX/VTT extraction, LLM parsing, chunking, and vectorization."""
 
 from __future__ import annotations
+
+import io
+import re
 
 import fitz  # PyMuPDF
 
@@ -13,6 +16,62 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
         pages.append(page.get_text())
     doc.close()
     return "\n".join(pages)
+
+
+def extract_text_from_pptx(pptx_bytes: bytes) -> str:
+    """Extract text from PowerPoint (.pptx) bytes."""
+    from pptx import Presentation
+
+    prs = Presentation(io.BytesIO(pptx_bytes))
+    slides = []
+    for i, slide in enumerate(prs.slides, 1):
+        parts = [f"--- Slide {i} ---"]
+        for shape in slide.shapes:
+            if shape.has_text_frame:
+                for para in shape.text_frame.paragraphs:
+                    text = para.text.strip()
+                    if text:
+                        parts.append(text)
+        slides.append("\n".join(parts))
+    return "\n\n".join(slides)
+
+
+def extract_text_from_vtt(vtt_bytes: bytes) -> str:
+    """Extract plain text from WebVTT (.vtt) subtitle files, stripping timestamps."""
+    text = vtt_bytes.decode("utf-8", errors="replace")
+    lines = text.split("\n")
+    content_lines = []
+    # Skip WEBVTT header, timestamps (HH:MM:SS.mmm --> HH:MM:SS.mmm), sequence numbers, and blank lines
+    timestamp_re = re.compile(r"\d{2}:\d{2}[:\.].*-->")
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith("WEBVTT") or line.startswith("NOTE"):
+            continue
+        if timestamp_re.match(line):
+            continue
+        if line.isdigit():
+            continue
+        # Strip HTML-like tags (<b>, <i>, etc.)
+        clean = re.sub(r"<[^>]+>", "", line)
+        if clean:
+            content_lines.append(clean)
+    return " ".join(content_lines)
+
+
+def extract_text(filename: str, file_bytes: bytes) -> str:
+    """Extract text from a file based on its extension."""
+    name = filename.lower()
+    if name.endswith(".pdf"):
+        return extract_text_from_pdf(file_bytes)
+    elif name.endswith(".pptx"):
+        return extract_text_from_pptx(file_bytes)
+    elif name.endswith(".vtt"):
+        return extract_text_from_vtt(file_bytes)
+    else:
+        # Plain text (.txt, .md, etc.)
+        return file_bytes.decode("utf-8")
 
 
 def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> list[str]:
@@ -73,11 +132,10 @@ HANDOUT:
 class HandoutProcessor:
     """Parse handout text into sections/subtopics, chunk, embed, and index."""
 
-    def __init__(self, db, llm, embedder, vector_store):
+    def __init__(self, db, llm, embedder):
         self.db = db
         self.llm = llm
         self.embedder = embedder
-        self.vector_store = vector_store
 
     async def process(self, course_id: str, text: str):
         """Parse handout text into sections/subtopics, chunk, embed, and index.
@@ -85,6 +143,8 @@ class HandoutProcessor:
         Returns a dict with ``name`` and ``description`` auto-extracted from
         the handout content.
         """
+        from app.services.vector_store import _to_blob
+
         result = await self.llm.chat_json(
             [{"role": "user", "content": PARSE_PROMPT + text}]
         )
@@ -92,6 +152,9 @@ class HandoutProcessor:
         name = result.get("name", "")
         description = result.get("description", "")
         sections = result.get("sections", [])
+
+        # Clear old sections before creating new ones (handles reprocessing)
+        await self.db.delete_sections_by_course(course_id)
 
         for sec_idx, section in enumerate(sections):
             section_id = await self.db.create_section(
@@ -118,28 +181,15 @@ class HandoutProcessor:
                     continue
                 chunks = chunk_text(content)
 
-                # Store chunks in DB regardless of vector store availability
+                # Embed chunks if embedder available, store inline with content
+                embeddings = None
+                if self.embedder:
+                    embeddings = await self.embedder.embed_batch(chunks)
+
                 for i, chunk_text_val in enumerate(chunks):
-                    await self.db.create_chunk(subtopic_id, chunk_text_val, i)
-
-                # Embed and index only if both embedder and vector store are available
-                if self.embedder and self.vector_store:
-                    embeddings = self.embedder.embed_batch(chunks)
-                    batch = []
-                    for i, (chunk_text_val, emb) in enumerate(
-                        zip(chunks, embeddings)
-                    ):
-                        batch.append(
-                            {
-                                "id": f"{subtopic_id}_{i}",
-                                "embedding": emb,
-                                "subtopic_id": subtopic_id,
-                            }
-                        )
-                    if batch:
-                        self.vector_store.add_batch(batch)
-
-        if self.vector_store:
-            self.vector_store.optimize()
+                    emb_blob = _to_blob(embeddings[i]) if embeddings else None
+                    await self.db.create_chunk_with_embedding(
+                        subtopic_id, chunk_text_val, emb_blob, i
+                    )
 
         return {"name": name, "description": description}

@@ -1,17 +1,21 @@
 ---
 import '../styles/global.css';
-const { title = "Study Pal", fullWidth = false } = Astro.props;
+const { title = "Cortex", fullWidth = false } = Astro.props;
 ---
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <title>{title}</title>
 </head>
 <body>
   <nav class="sticky top-0 z-50 h-14 bg-sp-base/80 backdrop-blur-xl border-b border-zinc-800/50 flex items-center gap-6 px-6">
-    <a href="/" class="text-lg font-bold text-zinc-50 no-underline hover:no-underline">Study Pal</a>
+    <a href="/" class="flex items-center gap-2.5 no-underline hover:no-underline">
+      <img src="/favicon.svg" alt="" width="28" height="28" />
+      <span class="text-lg font-bold text-zinc-50">Cortex</span>
+    </a>
   </nav>
   <main class={fullWidth ? "" : "px-6 py-8 max-w-5xl mx-auto"}>
     <slot />

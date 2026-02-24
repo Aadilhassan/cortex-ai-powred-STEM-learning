@@ -31,6 +31,7 @@ type Question = MCQQuestion | ShortAnswerQuestion | DiagramQuestion;
 interface Quiz {
   id: string;
   course_id: string;
+  scope: string;
   questions: Question[];
 }
 
@@ -197,7 +198,7 @@ export default function QuizView({ quizId }: { quizId: string }) {
             {correctCount}/{total} &mdash; {pct}%
           </div>
           <div className="text-zinc-500 mt-2">
-            Quiz complete
+            {quiz.scope === 'exam_midterm' ? 'Midterm Exam' : quiz.scope === 'exam_comprehensive' ? 'Final Exam' : 'Quiz'} complete
           </div>
         </div>
 
@@ -263,14 +264,30 @@ export default function QuizView({ quizId }: { quizId: string }) {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      <h1 className="text-2xl font-semibold tracking-tight text-zinc-50">
-        Quiz
-      </h1>
+      <div className="flex items-center gap-3">
+        <h1 className="text-2xl font-semibold tracking-tight text-zinc-50">
+          {quiz.scope === 'exam_midterm' ? 'Midterm Exam' : quiz.scope === 'exam_comprehensive' ? 'Final Exam' : 'Quiz'}
+        </h1>
+        <span className="text-sm text-zinc-500">
+          {quiz.questions.length} questions
+        </span>
+      </div>
 
       {quiz.questions.map((q, i) => (
         <div key={i} className="bg-zinc-900 rounded-xl p-6 space-y-4">
-          <div className="text-xs text-zinc-500 uppercase tracking-wide font-medium">
-            Question {i + 1}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-zinc-500 uppercase tracking-wide font-medium">
+              Question {i + 1}
+            </span>
+            {(q as any).difficulty && (
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                (q as any).difficulty === 'easy' ? 'bg-green-500/10 text-green-400 border border-green-500/20' :
+                (q as any).difficulty === 'hard' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
+                'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+              }`}>
+                {(q as any).difficulty}
+              </span>
+            )}
           </div>
           <div className="text-lg font-medium text-zinc-100">
             {q.question}

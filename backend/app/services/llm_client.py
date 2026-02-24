@@ -17,12 +17,12 @@ _FENCE_RE = re.compile(r"^```(?:\w+)?\s*\n(.*?)\n```\s*$", re.DOTALL)
 class LLMClient:
     """Async wrapper around an OpenAI-compatible chat completions API."""
 
-    def __init__(self, api_key: str, model: str = "minimax/minimax-m2.5", base_url: str = DEFAULT_BASE_URL) -> None:
+    def __init__(self, api_key: str, model: str = "minimax/minimax-m2.5", base_url: str = DEFAULT_BASE_URL, timeout: float = 60.0) -> None:
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.completions_url = f"{self.base_url}/chat/completions"
         self.http = httpx.AsyncClient(
-            timeout=60.0,
+            timeout=timeout,
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
@@ -34,18 +34,18 @@ class LLMClient:
     # ------------------------------------------------------------------
 
     async def chat(
-        self, messages: list[dict], temperature: float = 0.7
+        self, messages: list[dict], temperature: float = 0.7, max_tokens: int | None = None
     ) -> str:
         """Non-streaming chat. Returns the content string."""
-        response = await self.http.post(
-            self.completions_url,
-            json={
-                "model": self.model,
-                "messages": messages,
-                "temperature": temperature,
-                "stream": False,
-            },
-        )
+        body: dict = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "stream": False,
+        }
+        if max_tokens:
+            body["max_tokens"] = max_tokens
+        response = await self.http.post(self.completions_url, json=body)
         response.raise_for_status()
         data = response.json()
         return data["choices"][0]["message"]["content"]
@@ -55,18 +55,21 @@ class LLMClient:
     # ------------------------------------------------------------------
 
     async def chat_stream(
-        self, messages: list[dict], temperature: float = 0.7
+        self, messages: list[dict], temperature: float = 0.7, max_tokens: int | None = None
     ) -> AsyncIterator[str]:
         """Streaming chat. Yields text chunks as they arrive via SSE."""
+        body: dict = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "stream": True,
+        }
+        if max_tokens:
+            body["max_tokens"] = max_tokens
         async with self.http.stream(
             "POST",
             self.completions_url,
-            json={
-                "model": self.model,
-                "messages": messages,
-                "temperature": temperature,
-                "stream": True,
-            },
+            json=body,
         ) as response:
             response.raise_for_status()
             async for line in response.aiter_lines():
