@@ -4,6 +4,8 @@ AI-powered study platform that turns your course materials into an interactive t
 
 Upload a PDF or paste your syllabus. Cortex chunks it, embeds it, and lets you have a real-time conversation about any topic — with voice, LaTeX math rendering, auto-generated diagrams, and retrieval-augmented context from your own materials.
 
+<video src="cortex_intro.mp4" width="100%" autoplay muted loop></video>
+
 ![Dashboard](ScreenShot1.png)
 
 ![Course View](ScreenShot2.png)
