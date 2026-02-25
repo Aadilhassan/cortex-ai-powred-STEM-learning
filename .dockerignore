@@ -1,0 +1,11 @@
+.git
+backend/data
+backend/.env
+backend/__pycache__
+backend/.venv
+frontend/node_modules
+frontend/.astro
+*.mp4
+*.png
+*.jpg
+*.md

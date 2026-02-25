@@ -109,7 +109,7 @@ No external vector database. Everything runs in SQLite + NumPy.
 | TTS | Groq Orpheus (`canopylabs/orpheus-v1-english`) |
 | STT | Groq Whisper (`whisper-large-v3-turbo`) |
 | Markdown | Marked + KaTeX + Mermaid |
-| Deployment | Docker Compose + Nginx |
+| Deployment | Docker (GHCR) / Docker Compose + Nginx |
 
 ---
 
@@ -117,15 +117,25 @@ No external vector database. Everything runs in SQLite + NumPy.
 
 ### Prerequisites
 
-- Docker & Docker Compose
+- Docker
 - [Groq API key](https://console.groq.com/) (free tier works)
 - [OpenRouter API key](https://openrouter.ai/) (for embeddings and diagram generation)
 
-### Setup
+### Option 1: Docker Run (quickest)
 
 ```bash
-git clone <repo-url>
-cd study-pal
+docker run -d -p 3000:3000 \
+  -e GROQ_API_KEY=gsk_... \
+  -e OPENROUTER_API_KEY=sk-or-v1-... \
+  -v cortex-data:/app/backend/data \
+  ghcr.io/aadilhassan/cortex-ai-powred-stem-learning:v1.0
+```
+
+### Option 2: Docker Compose (for development)
+
+```bash
+git clone https://github.com/Aadilhassan/cortex-ai-powred-STEM-learning.git
+cd cortex-ai-powred-STEM-learning
 
 # Configure API keys
 cp backend/.env.example backend/.env
